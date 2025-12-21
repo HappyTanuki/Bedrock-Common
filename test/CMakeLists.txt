@@ -1,0 +1,12 @@
+file(GLOB TEST_SOURCES "*.cc")
+
+foreach(test_src ${TEST_SOURCES})
+    get_filename_component(test_name ${test_src} NAME_WE)
+    add_executable(${test_name} ${test_src})
+    target_link_libraries(${test_name} PRIVATE ${PROJECT_NAME})
+    if(NOT WIN32)
+        target_compile_options(${test_name} PRIVATE -march=native -maes -msse2 -msse3 -mssse3 -msse4.1 -msse4.2)
+    endif()
+    add_test(NAME ${test_name} COMMAND ${test_name})
+    set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+endforeach()

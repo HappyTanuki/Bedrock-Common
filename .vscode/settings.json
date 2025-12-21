@@ -1,0 +1,11 @@
+{
+    "editor.rulers": [
+        {
+            "column": 80
+        }
+    ],
+    "editor.renderWhitespace": "boundary",
+    "editor.formatOnSave": true,
+    "cmake.generator": "Ninja",
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+}
