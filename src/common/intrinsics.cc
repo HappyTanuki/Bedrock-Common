@@ -17,7 +17,7 @@ Register GetCPUFeatures() {
   __get_cpuid(1, &features.eax(), &features.ebx(), &features.ecx(),
               &features.edx());
 #else
-  __cpuid(static_cast<int*>(features.exx), 1);
+  __cpuid(reinterpret_cast<int*>(features.exx.data()), 1);
 #endif
   return features;
 }
