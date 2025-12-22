@@ -3,7 +3,7 @@
 
 class Validatable {
  public:
-  virtual bool IsValid() = 0;
+  virtual bool IsValid() const = 0;
 };
 
 #endif
