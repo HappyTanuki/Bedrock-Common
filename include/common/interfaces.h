@@ -4,6 +4,7 @@
 class Validatable {
  public:
   virtual bool IsValid() const = 0;
+  virtual ~Validatable() = default;
 };
 
 #endif
