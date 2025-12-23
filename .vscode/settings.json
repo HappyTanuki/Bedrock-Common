@@ -7,5 +7,11 @@
     "editor.renderWhitespace": "boundary",
     "editor.formatOnSave": true,
     "cmake.generator": "Ninja",
-    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "files.exclude": {
+        "**/*.rpyc": true,
+        "**/*.rpa": true,
+        "**/*.rpymc": true,
+        "**/cache/": true
+    }
 }
