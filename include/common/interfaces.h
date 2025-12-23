@@ -12,7 +12,7 @@ namespace bedrock {
 
 class Validatable {
  public:
-  virtual ~Validatable() = default;
+  virtual ~Validatable();
 
   virtual bool IsValid() const = 0;
 };
@@ -21,7 +21,7 @@ template <std::uint32_t BufferSize, typename StatusType>
   requires StatusEnum<StatusType>
 class ReadWritable {
  public:
-  virtual ~ReadWritable() = default;
+  virtual ~ReadWritable();
 
   virtual DataWithStatus<
       std::pair<std::array<std::byte, BufferSize>, std::uint32_t>, StatusType>
