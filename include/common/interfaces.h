@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <utility>
 
 #include "types_enums.h"
 
@@ -22,7 +23,8 @@ class ReadWritable {
  public:
   virtual ~ReadWritable() = default;
 
-  virtual DataWithStatus<std::array<std::byte, BufferSize>, StatusType>
+  virtual DataWithStatus<
+      std::pair<std::array<std::byte, BufferSize>, std::uint32_t>, StatusType>
   Read() = 0;
   virtual StatusType Write(std::span<std::byte> data) = 0;
 };
