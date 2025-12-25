@@ -11,10 +11,10 @@ namespace bedrock {
 
 class Validatable {
  public:
-  Validatable();
+  Validatable() = default;
   Validatable(const Validatable&) = default;
   Validatable& operator=(const Validatable&) = default;
-  virtual ~Validatable() = default;
+  virtual ~Validatable();
 
   virtual bool IsValid() const = 0;
 };
@@ -23,11 +23,11 @@ template <typename StatusType>
   requires StatusEnum<StatusType>
 class ReadWritable {
  public:
-  ReadWritable();
+  ReadWritable() = default;
   ReadWritable(const ReadWritable&) = default;
   ReadWritable& operator=(const ReadWritable&) = default;
 
-  virtual ~ReadWritable() = default;
+  virtual ~ReadWritable();
 
   virtual DataWithStatus<std::pair<std::vector<std::byte>, std::uint32_t>,
                          StatusType>
