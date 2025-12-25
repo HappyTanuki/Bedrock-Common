@@ -2,6 +2,6 @@
 
 bedrock::Validatable::~Validatable() = default;
 
-template <std::uint32_t BufferSize, typename StatusType>
+template <typename StatusType>
   requires bedrock::StatusEnum<StatusType>
-bedrock::ReadWritable<BufferSize, StatusType>::~ReadWritable() = default;
+bedrock::ReadWritable<StatusType>::~ReadWritable() = default;

@@ -1,10 +1,9 @@
 #ifndef BEDROCK_COMMON_COMMON_INTERFACES_H_
 #define BEDROCK_COMMON_COMMON_INTERFACES_H_
 
-#include <array>
 #include <cstdint>
 #include <span>
-#include <utility>
+#include <vector>
 
 #include "types_enums.h"
 
@@ -17,14 +16,14 @@ class Validatable {
   virtual bool IsValid() const = 0;
 };
 
-template <std::uint32_t BufferSize, typename StatusType>
+template <typename StatusType>
   requires StatusEnum<StatusType>
 class ReadWritable {
  public:
   virtual ~ReadWritable();
 
-  virtual DataWithStatus<
-      std::pair<std::array<std::byte, BufferSize>, std::uint32_t>, StatusType>
+  virtual DataWithStatus<std::pair<std::vector<std::byte>, std::uint32_t>,
+                         StatusType>
   Read() = 0;
   virtual StatusType Write(std::span<std::byte> data) = 0;
 };
