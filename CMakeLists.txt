@@ -30,7 +30,9 @@ endif()
 find_program(CLANG_TIDY_EXE NAMES clang-tidy)
 
 if(CLANG_TIDY_EXE)
-    set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-checks=-*,google-readability-casting;-fix;-fix-errors;")
+    set(CMAKE_CXX_CLANG_TIDY
+    $<$<COMPILE_LANGUAGE:CXX>:clang-tidy;-checks=-*,google-readability-casting;-fix;-fix-errors>
+)
 endif()
 
 if (PROJECT_IS_TOP_LEVEL AND CMAKE_EXPORT_COMPILE_COMMANDS)

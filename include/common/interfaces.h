@@ -11,7 +11,9 @@ namespace bedrock {
 
 class Validatable {
  public:
-  virtual ~Validatable();
+  Validatable(const Validatable&) = default;
+  Validatable& operator=(const Validatable&) = default;
+  virtual ~Validatable() = default;
 
   virtual bool IsValid() const = 0;
 };
