@@ -20,7 +20,7 @@ template <typename StatusType>
   requires StatusEnum<StatusType>
 class ReadWritable {
  public:
-  virtual ~ReadWritable();
+  virtual ~ReadWritable() = default;
 
   virtual DataWithStatus<std::pair<std::vector<std::byte>, std::uint32_t>,
                          StatusType>
