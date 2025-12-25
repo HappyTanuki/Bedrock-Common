@@ -24,7 +24,7 @@ class ReadWritable {
 
   virtual DataWithStatus<std::pair<std::vector<std::byte>, std::uint32_t>,
                          StatusType>
-  Read() = 0;
+  Read(std::uint32_t request_size) = 0;
   virtual StatusType Write(std::span<std::byte> data) = 0;
 };
 
