@@ -4,6 +4,14 @@
 #include <cstdint>
 #include <string_view>
 
+#ifndef _WIN32
+#include <cpuid.h>
+#else
+#include <intrin.h>
+#endif
+
+#include <immintrin.h>
+
 namespace bedrock::intrinsic {
 
 struct Register {
