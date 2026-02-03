@@ -2,18 +2,22 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <io.h>
+#include <time.h>
 #else
-#include <ctime>
-#endif
 #include <unistd.h>
+#endif
 
 #include <cstring>
+#include <ctime>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <thread>
 
+#ifndef _WIN32
 extern char* tzname[2];
+#endif
 
 namespace bedrock::log {
 
@@ -29,6 +33,7 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
   QueryPerformanceFrequency(&freq);
   QueryPerformanceCounter(&ts);
   ms = ts.QuadPart * 1000LL / freq.QuadPart;
+  _tzset();
 #else
   ::timespec ts;
   ::clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -43,6 +48,18 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
   std::string prefix = "";
 
   char buffer[100] = "";
+
+#ifdef _WIN32
+  if (::strcmp(_tzname[0], _tzname[1]) != 0) {
+    ::sprintf(buffer, "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s/%s]",
+              1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
+              t->tm_min, t->tm_sec, ms, _tzname[0], _tzname[1]);
+  } else {
+    ::sprintf(buffer, "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s]",
+              1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
+              t->tm_min, t->tm_sec, ms, _tzname[0]);
+  }
+#else
   if (::strcmp(tzname[0], tzname[1]) != 0) {
     ::sprintf(buffer, "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s/%s]",
               1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
@@ -52,6 +69,7 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
               1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
               t->tm_min, t->tm_sec, ms, tzname[0]);
   }
+#endif
 
   prefix += buffer;
 
@@ -64,7 +82,15 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
     return;
   }
 
-  if (::isatty(STDERR_FILENO)) {
+  bool is_tty = true;
+
+#if _WIN32
+  is_tty = ::_isatty(_fileno(stderr));
+#else
+  is_tty = ::isatty(STDERR_FILENO);
+#endif
+
+  if (is_tty) {
     switch (lvl) {
       case Level::kTrace:
         prefix += "[TRACE]";
