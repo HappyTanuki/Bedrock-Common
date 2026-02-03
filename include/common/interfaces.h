@@ -37,8 +37,4 @@ class ReadWritable {
 
 }  // namespace bedrock
 
-template <typename StatusType>
-  requires bedrock::StatusEnum<StatusType>
-bedrock::ReadWritable<StatusType>::~ReadWritable() = default;
-
 #endif
