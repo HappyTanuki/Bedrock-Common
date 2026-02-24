@@ -14,7 +14,7 @@ class Validatable {
   Validatable() = default;
   Validatable(const Validatable&) = default;
   Validatable& operator=(const Validatable&) = default;
-  virtual ~Validatable() = default;
+  virtual ~Validatable();
 
   virtual bool IsValid() const = 0;
 };
