@@ -27,8 +27,6 @@ class ReadWritable {
   ReadWritable(const ReadWritable&) = default;
   ReadWritable& operator=(const ReadWritable&) = default;
 
-  virtual ~ReadWritable();
-
   virtual DataWithStatus<std::pair<std::vector<std::byte>, std::uint32_t>,
                          StatusType>
   Read(std::uint32_t request_size) = 0;
