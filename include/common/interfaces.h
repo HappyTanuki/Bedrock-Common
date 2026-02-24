@@ -14,7 +14,7 @@ class Validatable {
   Validatable() = default;
   Validatable(const Validatable&) = default;
   Validatable& operator=(const Validatable&) = default;
-  virtual ~Validatable();
+  virtual ~Validatable() = default;
 
   virtual bool IsValid() const = 0;
 };
@@ -26,6 +26,8 @@ class ReadWritable {
   ReadWritable() = default;
   ReadWritable(const ReadWritable&) = default;
   ReadWritable& operator=(const ReadWritable&) = default;
+
+  virtual ~ReadWritable() = default;
 
   virtual DataWithStatus<std::pair<std::vector<std::byte>, std::uint32_t>,
                          StatusType>
