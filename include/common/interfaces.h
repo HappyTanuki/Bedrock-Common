@@ -1,9 +1,10 @@
-#ifndef BEDROCK_COMMON_COMMON_INTERFACES_H_
+﻿#ifndef BEDROCK_COMMON_COMMON_INTERFACES_H_
 #define BEDROCK_COMMON_COMMON_INTERFACES_H_
 
 #include <cstdint>
 #include <span>
 #include <vector>
+#include <optional>
 
 #include "types_enums.h"
 
@@ -33,6 +34,21 @@ class ReadWritable {
                          StatusType>
   Read(std::uint32_t request_size) = 0;
   virtual StatusType Write(std::span<const std::byte> data) = 0;
+};
+
+// CRTP helper for types with restricted construction.
+// The derived class must:
+// 1) Declare `ConstructFailable<Derived>` as a friend
+//    to allow access to its non-public constructors.
+// 2) Make its constructors private or protected so that
+//    instances can only be created via `Create(...)`.
+template <typename ClassType>
+class ConstructFailable {
+ public:
+  template <typename... Args>
+  static std::optional<ClassType> Create(Args&&... args) {
+    return ClassType(std::forward<Args>(args)...);
+  }
 };
 
 }  // namespace bedrock
