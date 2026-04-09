@@ -36,18 +36,20 @@ class ReadWritable {
   virtual StatusType Write(std::span<const std::byte> data) = 0;
 };
 
-// CRTP helper for types with restricted construction.
+// CRTP helper for failable construction via a static implementation hook.
 // The derived class must:
-// 1) Declare `ConstructFailable<Derived>` as a friend
-//    to allow access to its non-public constructors.
-// 2) Make its constructors private or protected so that
-//    instances can only be created via `Create(...)`.
+// 1) Declare `ConstructFailable<Derived>` as a friend to allow access to
+//    its non-public static `CreateImpl(...)`.
+// 2) Provide a static `CreateImpl(Args...)` that returns
+//    `std::optional<Derived>` (or compatible).
+// 3) Make its constructors non-public (private/protected) to prevent
+//    direct construction and enforce creation via `Create(...)`.
 template <typename ClassType>
 class ConstructFailable {
  public:
   template <typename... Args>
   static std::optional<ClassType> Create(Args&&... args) {
-    return ClassType(std::forward<Args>(args)...);
+    return ClassType::CreateImpl(std::forward<Args>(args)...);
   }
 };
 
