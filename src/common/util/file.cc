@@ -56,8 +56,7 @@ std::uint64_t FindFirstApperenceFromFile(std::filesystem::path path,
 
   std::size_t pattern_size = pattern.size();
 
-  //std::size_t chunk_size = 4 * 1024 * 1024;  // 4Mib
-  std::size_t chunk_size = 4;  // 4byte
+  std::size_t chunk_size = 4 * 1024 * 1024;  // 4Mib
   std::string chunk = "";
   chunk.resize(chunk_size + pattern_size);
 
@@ -101,8 +100,7 @@ std::uint64_t FindFirstApperenceFromFile(std::filesystem::path path,
 
   std::size_t pattern_size = pattern.size();
 
-  //std::size_t chunk_size = 4 * 1024 * 1024;  // 4Mib
-  std::size_t chunk_size = 4;  // 4byte
+  std::size_t chunk_size = 4 * 1024 * 1024;  // 4Mib
   std::vector<std::uint8_t> chunk(chunk_size + pattern_size);
 
   if (chunk_size < pattern_size) {
