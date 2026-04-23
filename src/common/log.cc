@@ -1,9 +1,9 @@
 #include "common/log.h"
 
 #ifdef _WIN32
-#include <windows.h>
 #include <io.h>
 #include <time.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -13,6 +13,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #ifndef _WIN32

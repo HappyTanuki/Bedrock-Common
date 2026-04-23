@@ -1,37 +1,294 @@
-{
-    "version": 8,
-    "configurePresets": [
-        {
-            "name": "Debug_Clang_18.1.3_x86_64-pc-linux-gnu",
-            "displayName": "Debug Clang 18.1.3 x86_64-pc-linux-gnu",
-            "generator": "Ninja",
-            "description": "Using compilers: CXX = /usr/bin/clang++",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
-                "CMAKE_BUILD_TYPE": "Debug"
-            },
-            "condition": {
-                "type": "equals",
-                "lhs": "${hostSystemName}",
-                "rhs": "Linux"
-            }
-        },
-        {
-            "name": "Release_Clang_18.1.3_x86_64-pc-linux-gnu",
-            "displayName": "Release Clang 18.1.3 x86_64-pc-linux-gnu",
-            "generator": "Ninja",
-            "description": "Using compilers: CXX = /usr/bin/clang++",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
-                "CMAKE_BUILD_TYPE": "Release"
-            },
-            "condition": {
-                "type": "equals",
-                "lhs": "${hostSystemName}",
-                "rhs": "Linux"
-            }
-        }
-    ]
+﻿{
+  "version": 9,
+  "configurePresets": [
+    {
+      "name": "Paths",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/output/${presetName}",
+      "installDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_ARCHIVE_OUTPUT_DIRECTORY": "${sourceDir}/build/${presetName}",
+        "CMAKE_LIBRARY_OUTPUT_DIRECTORY": "${sourceDir}/build/${presetName}",
+        "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/build/${presetName}"
+      }
+    },
+    {
+      "name": "Linux-Clang-Build",
+      "hidden": true,
+      "inherits": [
+        "Paths"
+      ],
+      "generator": "Ninja Multi-Config",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "Linux-GCC-Build",
+      "hidden": true,
+      "inherits": [
+        "Paths"
+      ],
+      "generator": "Ninja Multi-Config",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "Windows-Build",
+      "hidden": true,
+      "inherits": [
+        "Paths"
+      ],
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "x64Windows",
+      "hidden": true,
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "x64Linux",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-m64"
+      }
+    },
+    {
+      "name": "x86Windows",
+      "hidden": true,
+      "architecture": {
+        "value": "x86",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "x86Linux",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-m32",
+        "CMAKE_EXE_LINKER_FLAGS": "-m32",
+        "CMAKE_SHARED_LINKER_FLAGS": "-m32"
+      }
+    },
+    {
+      "name": "Debug",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "Release",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "MD",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "MT",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "MDd",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebugDLL"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "MTd",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "Windows-x64-Debug",
+      "displayName": "Windows x64 Debug",
+      "inherits": [
+        "Windows-Build",
+        "Debug",
+        "x64Windows",
+        "MDd"
+      ]
+    },
+    {
+      "name": "Windows-x86-Debug",
+      "displayName": "Windows x86 Debug",
+      "inherits": [
+        "Windows-Build",
+        "Debug",
+        "x86Windows",
+        "MDd"
+      ]
+    },
+    {
+      "name": "Windows-x64-Release",
+      "displayName": "Windows x64 Release",
+      "inherits": [
+        "Windows-Build",
+        "Release",
+        "x64Windows",
+        "MD"
+      ]
+    },
+    {
+      "name": "Windows-x86-Release",
+      "displayName": "Windows x86 Release",
+      "inherits": [
+        "Windows-Build",
+        "Release",
+        "x86Windows",
+        "MD"
+      ]
+    },
+    {
+      "name": "Windows-x64-Debug-MT",
+      "displayName": "Windows x64 Debug MT",
+      "inherits": [
+        "Windows-Build",
+        "Debug",
+        "x64Windows",
+        "MTd"
+      ]
+    },
+    {
+      "name": "Windows-x86-Debug-MT",
+      "displayName": "Windows x86 Debug MT",
+      "inherits": [
+        "Windows-Build",
+        "Debug",
+        "x86Windows",
+        "MTd"
+      ]
+    },
+    {
+      "name": "Windows-x64-Release-MT",
+      "displayName": "Windows x64 Release MT",
+      "inherits": [
+        "Windows-Build",
+        "Release",
+        "x64Windows",
+        "MT"
+      ]
+    },
+    {
+      "name": "Windows-x86-Release-MT",
+      "displayName": "Windows x86 Release MT",
+      "inherits": [
+        "Windows-Build",
+        "Release",
+        "x86Windows",
+        "MT"
+      ]
+    },
+    {
+      "name": "Clang-x64",
+      "displayName": "Clang x64",
+      "inherits": [
+        "Linux-Clang-Build",
+        "x64Linux"
+      ]
+    },
+    {
+      "name": "GCC-x64",
+      "displayName": "GCC x64",
+      "inherits": [
+        "Linux-GCC-Build",
+        "x64Linux"
+      ]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "Linux-Only",
+      "hidden": true,
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "Debug-Clang-x64",
+      "inherits": [
+        "Linux-Only"
+      ],
+      "configurePreset": "Clang-x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Release-Clang-x64",
+      "inherits": [
+        "Linux-Only"
+      ],
+      "configurePreset": "Clang-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "Debug-GCC-x64",
+      "inherits": [
+        "Linux-Only"
+      ],
+      "configurePreset": "GCC-x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Release-GCC-x64",
+      "inherits": [
+        "Linux-Only"
+      ],
+      "configurePreset": "GCC-x64",
+      "configuration": "Release"
+    }
+  ]
 }
