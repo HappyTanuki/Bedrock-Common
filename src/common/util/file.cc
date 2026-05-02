@@ -1,5 +1,6 @@
 #include "common/util/file.h"
 
+#include <cstring>
 #include <fstream>
 
 #include "common/util/memory.h"
@@ -7,21 +8,13 @@
 namespace bedrock::util {
 
 std::string ReadEntireFileIntoString(std::filesystem::path path) {
-  std::ifstream file(path);
+  std::ifstream file(path, std::ios::binary);
   if (!file) {
     return {};
   }
 
-  file.seekg(0, std::ios::end);
-  // 현재 위치 = 파일 크기
-  std::size_t size = static_cast<std::size_t>(file.tellg());
-  file.seekg(0, std::ios::beg);
-
-  std::string contents;
-  contents.resize(size);
-  file.read(contents.data(), static_cast<std::streamsize>(size));
-
-  return contents;
+  return std::string(std::istreambuf_iterator<char>(file),
+                     std::istreambuf_iterator<char>());
 }
 
 void WriteToFile(std::filesystem::path path, std::vector<std::uint8_t> data) {
@@ -48,7 +41,7 @@ void WriteToFile(std::filesystem::path path, std::string data) {
 }
 
 std::uint64_t FindFirstApperenceFromFile(std::filesystem::path path,
-                                  std::string_view pattern) {
+                                         std::string_view pattern) {
   std::ifstream file(path, std::ios::binary);
   std::uint64_t offset = 0;
   std::size_t carry = 0;
@@ -65,13 +58,13 @@ std::uint64_t FindFirstApperenceFromFile(std::filesystem::path path,
   }
 
   while (true) {
-    file.read(reinterpret_cast<char *>(chunk.data() + carry), chunk_size);
+    file.read(reinterpret_cast<char*>(chunk.data() + carry), chunk_size);
     std::size_t read_bytes = file.gcount();
-    
+
     if (read_bytes == 0) {
       break;
     }
-    
+
     data_total_size = carry + read_bytes;
     std::string_view chunk_span = chunk;
     chunk_span = chunk_span.substr(0, data_total_size);
@@ -91,8 +84,8 @@ std::uint64_t FindFirstApperenceFromFile(std::filesystem::path path,
 
   return offset;
 }
-std::uint64_t FindFirstApperenceFromFile(std::filesystem::path path,
-                                  std::span<const std::uint8_t> pattern) {
+std::uint64_t FindFirstApperenceFromFile(
+    std::filesystem::path path, std::span<const std::uint8_t> pattern) {
   std::ifstream file(path, std::ios::binary);
   std::uint64_t offset = 0;
   std::size_t carry = 0;
@@ -108,7 +101,7 @@ std::uint64_t FindFirstApperenceFromFile(std::filesystem::path path,
   }
 
   while (true) {
-    file.read(reinterpret_cast<char *>(chunk.data() + carry), chunk_size);
+    file.read(reinterpret_cast<char*>(chunk.data() + carry), chunk_size);
     std::size_t read_bytes = file.gcount();
 
     if (read_bytes == 0) {
