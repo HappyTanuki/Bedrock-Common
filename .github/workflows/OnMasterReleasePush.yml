@@ -1,0 +1,43 @@
+name: OnMasterReleasePush
+
+on:
+  push:
+    branches: [ master, release ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      # - name: Build
+      #   run: go build -o build/ cmd/client/main.go
+  notify-parent:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Get installation token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: 3586163
+          private-key: ${{ secrets.SECRET_KEY }}
+          owner: HappyTanuki
+          repositories: Bedrock       # 토큰 권한을 이 레포로 한정
+      - name: Trigger parent repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            https://api.github.com/repos/HappyTanuki/Bedrock/dispatches \
+            -d '{
+            "event_type":"submodule_updated",
+              "client_payload": {
+                "branch": "${{ github.ref_name }}"
+              }
+            }'

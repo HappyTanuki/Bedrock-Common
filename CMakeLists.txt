@@ -27,7 +27,7 @@ if(NOT DEFINED ROOT_PROJECT_NAME)
 endif()
 
 # ============================================================
-# Target – Networking
+# Target – Common
 # ============================================================
 file(GLOB_RECURSE SOURCES "src/*.cc")
 

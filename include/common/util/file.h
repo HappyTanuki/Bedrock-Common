@@ -5,13 +5,15 @@
 
 namespace bedrock::util {
 
-std::string ReadEntireFileIntoString(std::filesystem::path path);
-void WriteToFile(std::filesystem::path path, std::vector<std::uint8_t> data);
-void WriteToFile(std::filesystem::path path, std::string data);
+bool ReadEntireFile(std::filesystem::path path, std::string& out);
+bool ReadEntireFile(std::filesystem::path path, std::vector<std::uint8_t>& out);
+bool WriteToFile(std::filesystem::path path,
+                 std::span<const std::uint8_t> data);
+bool WriteToFile(std::filesystem::path path, std::string_view data);
 
-std::uint64_t FindFirstApperenceFromFile(std::filesystem::path path,
-                                               std::string_view pattern);
-std::uint64_t FindFirstApperenceFromFile(
+std::uint64_t FindFirstAppearanceFromFile(const std::filesystem::path& path,
+                                          std::string_view pattern);
+std::uint64_t FindFirstAppearanceFromFile(
     std::filesystem::path path, std::span<const std::uint8_t> pattern);
 
 }  // namespace bedrock::util
