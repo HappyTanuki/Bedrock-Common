@@ -11,7 +11,7 @@ bool WriteToFile(std::filesystem::path path,
                  std::span<const std::uint8_t> data);
 bool WriteToFile(std::filesystem::path path, std::string_view data);
 
-std::uint64_t FindFirstAppearanceFromFile(const std::filesystem::path& path,
+std::uint64_t FindFirstAppearanceFromFile(std::filesystem::path path,
                                           std::string_view pattern);
 std::uint64_t FindFirstAppearanceFromFile(
     std::filesystem::path path, std::span<const std::uint8_t> pattern);
