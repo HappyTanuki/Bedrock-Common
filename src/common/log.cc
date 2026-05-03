@@ -52,21 +52,25 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
 
 #ifdef _WIN32
   if (::strcmp(_tzname[0], _tzname[1]) != 0) {
-    ::sprintf(buffer, "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s/%s]",
+    ::snprintf(buffer, sizeof(buffer),
+               "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s/%s]",
               1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
               t->tm_min, t->tm_sec, ms, _tzname[0], _tzname[1]);
   } else {
-    ::sprintf(buffer, "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s]",
+    ::snprintf(buffer, sizeof(buffer),
+               "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s]",
               1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
               t->tm_min, t->tm_sec, ms, _tzname[0]);
   }
 #else
   if (::strcmp(tzname[0], tzname[1]) != 0) {
-    ::sprintf(buffer, "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s/%s]",
+    ::snprintf(buffer, sizeof(buffer),
+               "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s/%s]",
               1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
               t->tm_min, t->tm_sec, ms, tzname[0], tzname[1]);
   } else {
-    ::sprintf(buffer, "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s]",
+    ::snprintf(buffer, sizeof(buffer),
+               "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s]",
               1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
               t->tm_min, t->tm_sec, ms, tzname[0]);
   }
