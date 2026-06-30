@@ -1,0 +1,132 @@
+{
+  "version": 9,
+  "include": [ "common.json" ],
+  "configurePresets": [
+    {
+      "name": "Windows-Build",
+      "hidden": true,
+      "inherits": [ "Paths" ],
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "x64Windows",
+      "hidden": true,
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "MD",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
+        "ENCRYPTION_LINKAGE": "DYNAMIC"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "MT",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+        "ENCRYPTION_LINKAGE": "STATIC"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "MDd",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebugDLL",
+        "ENCRYPTION_LINKAGE": "DYNAMIC"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "MTd",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug",
+        "ENCRYPTION_LINKAGE": "STATIC"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "Windows-x64-Debug",
+      "displayName": "Windows x64 Debug",
+      "inherits": [ "Windows-Build", "Debug", "x64Windows", "MDd" ]
+    },
+    {
+      "name": "Windows-x64-Release",
+      "displayName": "Windows x64 Release",
+      "inherits": [ "Windows-Build", "Release", "x64Windows", "MD" ]
+    },
+    {
+      "name": "Windows-x64-Debug-MT",
+      "displayName": "Windows x64 Debug MT",
+      "inherits": [ "Windows-Build", "Debug", "x64Windows", "MTd" ]
+    },
+    {
+      "name": "Windows-x64-Release-MT",
+      "displayName": "Windows x64 Release MT",
+      "inherits": [ "Windows-Build", "Release", "x64Windows", "MT" ]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "Windows-Only",
+      "hidden": true,
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "Windows-x64-Debug",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Windows-x64-Release",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Release",
+      "configuration": "Release"
+    },
+    {
+      "name": "Windows-x64-Debug-MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Debug-MT",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Windows-x64-Release-MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Release-MT",
+      "configuration": "Release"
+    }
+  ]
+}

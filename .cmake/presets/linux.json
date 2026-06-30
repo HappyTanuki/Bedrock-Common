@@ -1,0 +1,135 @@
+{
+  "version": 9,
+  "include": [ "common.json" ],
+  "configurePresets": [
+    {
+      "name": "Linux-Clang-Build",
+      "hidden": true,
+      "inherits": [ "Paths" ],
+      "generator": "Ninja Multi-Config",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "Linux-GCC-Build",
+      "hidden": true,
+      "inherits": [ "Paths" ],
+      "generator": "Ninja Multi-Config",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "x64Linux",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-m64",
+        "CMAKE_EXE_LINKER_FLAGS": "-m64",
+        "CMAKE_SHARED_LINKER_FLAGS": "-m64",
+        "CMAKE_MODULE_LINKER_FLAGS": "-m64"
+      }
+    },
+    {
+      "name": "LinuxDynamic",
+      "hidden": true,
+      "cacheVariables": {
+        "ENCRYPTION_LINKAGE": "DYNAMIC"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "LinuxStatic",
+      "hidden": true,
+      "cacheVariables": {
+        "ENCRYPTION_LINKAGE": "STATIC"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "Clang-x64",
+      "displayName": "Clang x64",
+      "inherits": [ "Linux-Clang-Build", "x64Linux", "LinuxDynamic" ]
+    },
+    {
+      "name": "GCC-x64",
+      "displayName": "GCC x64",
+      "inherits": [ "Linux-GCC-Build", "x64Linux", "LinuxDynamic" ]
+    },
+    {
+      "name": "Clang-x64-Static",
+      "displayName": "Clang x64 Static (musl only)",
+      "inherits": [ "Linux-Clang-Build", "x64Linux", "LinuxStatic" ]
+    },
+    {
+      "name": "GCC-x64-Static",
+      "displayName": "GCC x64 Static (musl only)",
+      "inherits": [ "Linux-GCC-Build", "x64Linux", "LinuxStatic" ]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "Linux-Only",
+      "hidden": true,
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "Debug-Clang-x64",
+      "inherits": [ "Linux-Only" ],
+      "configurePreset": "Clang-x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Release-Clang-x64",
+      "inherits": [ "Linux-Only" ],
+      "configurePreset": "Clang-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "Debug-GCC-x64",
+      "inherits": [ "Linux-Only" ],
+      "configurePreset": "GCC-x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Release-GCC-x64",
+      "inherits": [ "Linux-Only" ],
+      "configurePreset": "GCC-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "Release-Clang-x64-Static",
+      "inherits": [ "Linux-Only" ],
+      "configurePreset": "Clang-x64-Static",
+      "configuration": "Release"
+    },
+    {
+      "name": "Release-GCC-x64-Static",
+      "inherits": [ "Linux-Only" ],
+      "configurePreset": "GCC-x64-Static",
+      "configuration": "Release"
+    }
+  ]
+}
