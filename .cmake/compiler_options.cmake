@@ -87,7 +87,6 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 endif ()
 
 if(WIN32)
-    target_link_libraries(${SUB_PROJECT_NAME} PUBLIC crypt32)
     set_target_properties(${SUB_PROJECT_NAME} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 else()
     add_compile_options(
