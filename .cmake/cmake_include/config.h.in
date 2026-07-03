@@ -1,0 +1,17 @@
+#pragma once
+
+// ============================================================
+// 이 파일은 CMake가 .cmake/cmake_include/config.h.in 으로부터 생성합니다.
+// 직접 편집하지 마십시오. (configure_file, @ONLY 치환)
+// ============================================================
+
+// ------------------------------------------------------------
+// Target architecture (.cmake/architecture.cmake 에서 감지)
+// ------------------------------------------------------------
+#define BEDROCK_ARCH_X86 @BEDROCK_ARCH_X86@
+#define BEDROCK_ARCH_ARM @BEDROCK_ARCH_ARM@
+#define BEDROCK_ARCH_NAME "@BEDROCK_ARCH_NAME@"
+
+// 명령어셋 지원 여부는 컴파일타임 매크로가 아니라 런타임으로 판단합니다:
+//   bedrock::intrinsic::GetCPUFeatures() / IsCpuEnabledFeature(reg, "AES") 등
+// (CPUID/HWCAP 실측 기반. common/intrinsics.h 참고.)

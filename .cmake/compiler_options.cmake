@@ -62,12 +62,17 @@ endif()
 
 target_link_libraries(${SUB_PROJECT_NAME} PUBLIC CommonLinkOptions)
 
+# ============================================================
+# ISA(instruction set) 플래그
+# ============================================================
+# 명령어셋 활성화(-march=native 류)는 .cmake/isa_features.cmake 에서 처리합니다
+# (CMakeLists 에서 이 파일 이후 include).
+# 여기서는 예외/RTTI 비활성화 등 일반 옵션만 둡니다.
+
 if (NOT WIN32)
+    # 전역에는 ISA 플래그를 걸지 않습니다(위 주석 참고). 예외/RTTI 비활성만 유지.
     target_compile_options(
         ${SUB_PROJECT_NAME} PRIVATE
-        -maes
-        -msse2
-        -mssse3
         -fno-exceptions -fno-rtti
     )
 else()

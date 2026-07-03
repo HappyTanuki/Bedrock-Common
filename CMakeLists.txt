@@ -20,6 +20,13 @@ set(CMAKE_CXX_EXTENSIONS          OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS  ON)
 
 # ============================================================
+# Architecture detection (config.h 생성에 사용)
+# ============================================================
+# BEDROCK_ARCH_X86 / BEDROCK_ARCH_ARM / BEDROCK_ARCH_NAME 변수를 설정합니다.
+# 반드시 아래 configure_file(config.h.in -> config.h) 호출 전에 include 되어야 합니다.
+include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/architecture.cmake")
+
+# ============================================================
 # Linkage option (cross-platform abstraction of MT/MD)
 # ============================================================
 # DYNAMIC: 결과물 SHARED + 시스템 런타임 동적 (Win=MD, Linux=.so + libstdc++.so)
@@ -44,6 +51,9 @@ add_library(${ROOT_PROJECT_NAME}::${SUB_PROJECT_NAME} ALIAS ${SUB_PROJECT_NAME})
 
 # Compiler options
 include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/compiler_options.cmake")
+
+# ISA 명령어셋 활성화 플래그(-march=native 등). 감지는 런타임에서 수행.
+include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/isa_features.cmake")
 
 # ============================================================
 # compile_commands.json copy (clangd/IDE intellisense용)

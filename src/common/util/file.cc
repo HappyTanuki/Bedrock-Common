@@ -33,13 +33,13 @@ bool ReadEntireFile(std::filesystem::path path,
 }
 
 // wrapper for string_view
-bool bedrock::util::WriteToFile(std::filesystem::path path,
+bool WriteToFile(std::filesystem::path path,
                                 std::string_view data) {
   auto bytes = std::span(reinterpret_cast<const std::uint8_t*>(data.data()),
                          data.size());
   return WriteToFile(path, bytes);
 }
-bool bedrock::util::WriteToFile(std::filesystem::path path,
+bool WriteToFile(std::filesystem::path path,
                                 std::span<const std::uint8_t> data) {
   std::ofstream file(path, std::ios::binary);
   if (!file) {
