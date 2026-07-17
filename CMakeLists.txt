@@ -85,5 +85,5 @@ endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/post_build.cmake")
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/cmake_include/config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/config.h" @ONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/cmake_include/bedrock_common_config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/bedrock_common_config.h" @ONLY)
 target_include_directories(${SUB_PROJECT_NAME} SYSTEM PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")

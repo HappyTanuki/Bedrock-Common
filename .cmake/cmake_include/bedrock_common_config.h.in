@@ -1,0 +1,13 @@
+#pragma once
+
+// ============================================================
+// 이 파일은 CMake가 .cmake/cmake_include/common_config.h.in 으로부터 생성합니다.
+// 직접 편집하지 마십시오.
+// ============================================================
+
+// ------------------------------------------------------------
+// Target architectures
+// ------------------------------------------------------------
+#define BEDROCK_ARCH_X86 @BEDROCK_ARCH_X86@
+#define BEDROCK_ARCH_ARM @BEDROCK_ARCH_ARM@
+#define BEDROCK_ARCH_NAME "@BEDROCK_ARCH_NAME@"
