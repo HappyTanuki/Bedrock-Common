@@ -1,8 +1,5 @@
-#ifndef BEDROCK_COMMON_COMMON_COMMON_H_
-#define BEDROCK_COMMON_COMMON_COMMON_H_
+#pragma once
 
 #include "common/interfaces.h"   // IWYU pragma: export
 #include "common/intrinsics.h"   // IWYU pragma: export
 #include "common/types_enums.h"  // IWYU pragma: export
-
-#endif

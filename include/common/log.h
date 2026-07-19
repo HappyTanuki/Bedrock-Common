@@ -1,6 +1,4 @@
-#ifndef BEDROCK_COMMON_COMMON_LOG_H_
-#define BEDROCK_COMMON_COMMON_LOG_H_
-
+#pragma once
 #include <string_view>
 
 namespace bedrock::log {
@@ -25,5 +23,3 @@ void Error(std::string_view msg);
 void Fatal(std::string_view msg);
 
 }  // namespace bedrock::log
-
-#endif

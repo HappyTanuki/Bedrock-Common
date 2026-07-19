@@ -1,6 +1,4 @@
-#ifndef BEDROCK_COMMON_COMMON_TYPES_ENUMS_H_
-#define BEDROCK_COMMON_COMMON_TYPES_ENUMS_H_
-
+#pragma once
 #include <type_traits>
 
 namespace bedrock {
@@ -19,5 +17,3 @@ struct DataWithStatus {
 };
 
 }  // namespace bedrock
-
-#endif

@@ -1,6 +1,4 @@
-﻿#ifndef BEDROCK_COMMON_COMMON_INTERFACES_H_
-#define BEDROCK_COMMON_COMMON_INTERFACES_H_
-
+﻿#pragma once
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -54,5 +52,3 @@ class ConstructFailable {
 };
 
 }  // namespace bedrock
-
-#endif

@@ -1,4 +1,1 @@
-#ifndef BEDROCK_COMMON_COMMON_ALGORITHM_H_
-#define BEDROCK_COMMON_COMMON_ALGORITHM_H_
-
-#endif
+#pragma once
