@@ -19,9 +19,32 @@ enum class TranscriberError : std::uint32_t {
 const std::error_category& TranscriberCategory() noexcept;
 std::error_code make_error_code(TranscriberError e) noexcept;
 
-enum class ObjectType { kObject, kValue };
+enum class ObjectType { kRoot, kObject, kValue };
 
-enum class ValueType { kArray, kString, kNumber, kBoolean, kNull };
+enum class ValueType : std::uint32_t {
+  kNull = 0,
+  kSequence = 1,
+  kMap = 1 << 1,
+  kSet = 1 << 2,
+  kString = 1 << 3,
+  kNumber = 1 << 4,
+  kBoolean = 1 << 5,
+  kBinary = 1 << 6
+};
+
+constexpr ValueType operator|(ValueType a, ValueType b) {
+  return static_cast<ValueType>(static_cast<std::uint32_t>(a) |
+                                static_cast<std::uint32_t>(b));
+}
+constexpr ValueType& operator|=(ValueType& a, ValueType b) { return a = a | b; }
+constexpr ValueType operator&(ValueType a, ValueType b) {
+  return static_cast<ValueType>(static_cast<std::uint32_t>(a) &
+                                static_cast<std::uint32_t>(b));
+}
+// 플래그가 켜져 있는지
+constexpr bool HasFlag(ValueType v, ValueType f) {
+  return (static_cast<std::uint32_t>(v) & static_cast<std::uint32_t>(f)) != 0;
+}
 
 struct Object {
   Snowflake id;
@@ -44,6 +67,9 @@ class Deserializer : public Visitor {
         _input_stream(input_stream) {}
   virtual ~Deserializer() override;
 
+  // 방향 판별: 역직렬화기는 읽기. 포맷별 클래스는 이걸 다시 구현할 필요 없음.
+  bool IsReading() const final override { return true; }
+
   Status status;
 
  protected:
@@ -63,17 +89,22 @@ class Serializer : public Visitor {
         _status(make_error_code(TranscriberError::kSuccess)) {}
   virtual ~Serializer() override;
 
+  // 방향 판별: 직렬화기는 쓰기. 포맷별 클래스는 이걸 다시 구현할 필요 없음.
+  bool IsReading() const final override { return false; }
+
   virtual Status Flush() = 0;
 
  protected:
   bool IsSeekable(std::ostream& _output_stream);
 
-  virtual void InsertAppropriateToken(Object& obj) = 0;
+  virtual void InjectAppropriateToken(Object& obj) = 0;
 
   std::ostream& _output_stream;
 
   std::stack<Object> _objects;
   std::unique_ptr<Object> _root_object;
+
+  std::string _pending_key;
 
   Status _status;
 };

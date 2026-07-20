@@ -1,60 +1,25 @@
 #include "common/data_types/snowflake.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <mutex>
-#include <queue>
 #include <thread>
 
 namespace bedrock {
 
-// 이 스레드 슬롯 풀을 쓰는 이유는 std::thread::id를 std::hash로 해시했을 때
-// 값이 너무 커서 Snowflake의 7bit thread_id에 들어가지 못하는 경우가 많아
-// 충돌을 일으키며, 또 스레드가 재사용될 때마다 id가 바뀌므로 Snowflake의
-// uniqueness를 보장할 수 없기 때문임.
-class ThreadSlotPool {
- public:
-  static constexpr std::uint16_t kMaxSlots = 128;
-
-  std::uint16_t Acquire() {
-    std::lock_guard<std::mutex> lock(mu_);
-    if (!free_list_.empty()) {
-      auto s = free_list_.front();
-      free_list_.pop();
-      return s;
-    }
-    // 풀이 다 찼으면 fallback (예: 0 반환하거나 예외)
-    next_++;
-    next_ &= kMaxSlots;
-    return next_;
-  }
-
-  void Release(std::uint16_t slot) {
-    std::lock_guard<std::mutex> lock(mu_);
-    free_list_.push(slot);
-  }
-
- private:
-  std::mutex mu_;
-  std::queue<std::uint16_t> free_list_;
-  std::uint16_t next_ = 0;
-};
-
-static inline ThreadSlotPool& GlobalSlotPool() {
-  static ThreadSlotPool pool;
-  return pool;
-}
-
-// RAII 래퍼: 생성 시 슬롯 획득, 소멸 시 반납
-struct ThreadSlotGuard {
-  std::uint16_t slot;
-  ThreadSlotGuard() : slot(GlobalSlotPool().Acquire()) {}
-  ~ThreadSlotGuard() { GlobalSlotPool().Release(slot); }
-};
+// std::thread::id를 std::hash로 해시하면 값이 너무 커서 Snowflake의 7bit
+// thread_id에 그대로 넣을 수 없고, 스레드가 재사용될 때 id도 바뀐다. 그래서
+// 각 스레드가 처음 id를 요청할 때 전역 카운터에서 순번을 하나 받아
+// thread_local에 캐시한다. 같은 스레드는 항상 같은 번호를 돌려받고, 살아 있는
+// 동안 다른 스레드와 겹치지 않는다. 다만 프로세스 수명 동안 128개를 초과해
+// 스레드가 생성되면 번호가 래핑되어 재사용된다(timestamp+sequence로 보완).
+static constexpr std::uint16_t kThreadIdMask = 0x7F;  // 7bit: 0~127
 
 inline static std::uint16_t GetThisThreadId() {
-  thread_local ThreadSlotGuard guard;
-  return guard.slot;
+  static std::atomic<std::uint32_t> counter{0};
+  thread_local std::uint16_t id = static_cast<std::uint16_t>(
+      counter.fetch_add(1, std::memory_order_relaxed) & kThreadIdMask);
+  return id;
 }
 
 inline static std::uint64_t CurrentTimestampMs() {

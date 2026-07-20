@@ -1,20 +1,30 @@
 #include "common/archive/transcriber/yaml_deserializer.h"
 
+#include <limits>
+
 #include "common/archive/transcriber/transciber.h"
 
 namespace bedrock::archive::transcriber {
 
 YAMLDeserializer::~YAMLDeserializer() = default;
 
-YAMLDeserializer& YAMLDeserializer::OnRootBegin(std::string_view name) {
-  return *this;
-}
-YAMLDeserializer& YAMLDeserializer::OnRootEnd() { return *this; }
+void YAMLDeserializer::OnRootBegin(std::string_view name) { return; }
+void YAMLDeserializer::OnRootEnd() { return; }
 
-YAMLDeserializer& YAMLDeserializer::OnObjectBegin(std::string_view name) {
-  return *this;
+void YAMLDeserializer::OnObjectBegin(std::string_view name) { return; }
+void YAMLDeserializer::OnObjectEnd() { return; }
+
+std::size_t YAMLDeserializer::OnSeqBegin(std::string_view name,
+                                         std::size_t count) {
+  return std::numeric_limits<std::size_t>::max();
 }
-YAMLDeserializer& YAMLDeserializer::OnObjectEnd() { return *this; }
+void YAMLDeserializer::OnSeqEnd() { return; }
+
+std::size_t YAMLDeserializer::OnMapBegin(std::string_view name,
+                                         std::size_t count) {
+  return std::numeric_limits<std::size_t>::max();
+}
+void YAMLDeserializer::OnMapEnd() { return; }
 
 template <typename T>
 static Status VisitImpl(std::string_view name, T& value, const Status& status,
@@ -84,8 +94,14 @@ YAMLDeserializer& YAMLDeserializer::Visit(std::string_view name,
   return *this;
 }
 YAMLDeserializer& YAMLDeserializer::Visit(std::string_view name,
+                                          std::vector<std::byte>& value) {
+  status = VisitImpl(name, value, status, _objects);
+  return *this;
+}
+YAMLDeserializer& YAMLDeserializer::Visit(std::string_view name,
                                           std::string& value) {
   status = VisitImpl(name, value, status, _objects);
   return *this;
 }
+
 }  // namespace bedrock::archive::transcriber
