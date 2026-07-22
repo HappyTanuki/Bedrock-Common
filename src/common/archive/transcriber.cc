@@ -1,4 +1,9 @@
-#include "common/archive/transcriber/transciber.h"
+/**
+ * @file transcriber.cc
+ * @brief TranscriberError의 std::error_category 구현과 Deserializer/
+ *        Serializer의 소멸자 정의.
+ */
+#include "common/archive/transciber.h"
 #include "common/i18n/locales.h"
 
 namespace bedrock::archive::transcriber {

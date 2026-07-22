@@ -1,3 +1,14 @@
+/**
+ * @file cpu_feature_report.cc
+ * @brief 실행 CPU/OS가 지원하는 CpuFeature를 모두 출력하는 정보성
+ *        테스트.
+ *
+ * kAllFeatures 표를 순회하며 각 기능의 지원 여부를 [O]/[ ] 로 표시해
+ * 출력하고, 지원 개수를 총 개수와 함께 보여준다. AVX 계열은
+ * HasFeature 내부에서 XCR0(OS 상태) 검증까지 거친 결과다.
+ *
+ * @return 하드웨어 지원 여부와 무관하게 항상 0(정보 출력이 목적).
+ */
 #include <cstddef>
 #include <iostream>
 #include <string_view>
@@ -10,8 +21,12 @@ namespace {
 using bedrock::intrinsic::CpuFeature;
 using bedrock::intrinsic::HasFeature;
 
-// CpuFeature 전체 목록. C++에는 enum 리플렉션이 없어 이름을 함께 나열합니다.
-// (common/intrinsics.h 의 enum 선언 순서와 동일)
+/**
+ * @brief CpuFeature 전체 목록 — enum 값과 이름 문자열의 매핑 표.
+ *
+ * C++에는 enum 리플렉션이 없어 이름을 함께 나열한다. 선언 순서는
+ * common/intrinsics.h 의 enum 선언 순서와 동일하다.
+ */
 // clang-format off
 constexpr std::pair<CpuFeature, std::string_view> kAllFeatures[] = {
     {CpuFeature::kFPU,                  "FPU"},
@@ -210,8 +225,7 @@ constexpr std::pair<CpuFeature, std::string_view> kAllFeatures[] = {
 
 }  // namespace
 
-// 실행 CPU/OS가 지원하는 기능을 전부 출력합니다. (정보성 테스트)
-// AVX 계열은 HasFeature 내부에서 XCR0(OS 상태) 검증까지 거친 결과입니다.
+/** @brief 지원되는 CPU 기능을 모두 나열해 콘솔에 출력한다. */
 int main() {
   const auto reg = bedrock::intrinsic::GetCPUFeatures();
 
