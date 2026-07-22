@@ -1,3 +1,12 @@
+/**
+ * @file intrinsics.cc
+ * @brief CPU 아키텍처·기능 런타임 감지 구현.
+ *
+ * x86은 CPUID와 XCR0(OS 확장 상태) 검증을, ARM은 플랫폼별
+ * HWCAP/HWCAP2(Linux), sysctlbyname(macOS), IsProcessorFeaturePresent
+ * (Windows)를 사용합니다. CpuFeature → {레지스터, 비트} 매핑은
+ * kFeatureAndMask 테이블을 단일 진실 공급원으로 삼습니다.
+ */
 #include "common/intrinsics.h"
 
 #include <array>
@@ -244,9 +253,15 @@ static const std::map<CpuFeature, std::uint64_t> kRequiredXcr0 = {
 };
 // clang-format on
 
-// XCR0 읽기. XGETBV 는 CPUID.OSXSAVE=1 일 때만 유효하므로 호출 측이
-// kOSXSAVE 를 먼저 확인해야 합니다. 값은 프로세스 수명 동안 사실상
-// 불변이므로 1회 읽어 캐시합니다.
+/**
+ * @brief XCR0(확장 제어 레지스터 0)을 읽습니다.
+ *
+ * XGETBV 는 CPUID.OSXSAVE=1 일 때만 유효하므로 호출 측이 kOSXSAVE
+ * 를 먼저 확인해야 합니다. 값은 프로세스 수명 동안 사실상 불변이므로
+ * 1회 읽어 캐시합니다.
+ *
+ * @return 현재 XCR0 값(하위 32비트=EAX, 상위 32비트=EDX).
+ */
 static std::uint64_t ReadXcr0() {
 #ifdef _WIN32
   static const std::uint64_t xcr0 = _xgetbv(0);
@@ -346,10 +361,18 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {};
 #endif
 
 #if BEDROCK_ARCH_ARM && (defined(__APPLE__) || defined(_WIN32))
-// 테이블에서 (레지스터, 기능)에 해당하는 비트 마스크를 얻습니다.
-// 테이블이 단일 진실 공급원(single source of truth)이 되도록,
-// 기능→비트 매핑이 필요한 내부 코드는 이 헬퍼를 사용합니다.
-// 이 파일 내부 전용 헬퍼이므로 static(내부 링크)으로 둡니다.
+/**
+ * @brief 테이블에서 (레지스터, 기능)에 해당하는 비트 마스크를 얻습니다.
+ *
+ * kFeatureAndMask 테이블이 단일 진실 공급원(single source of truth)이
+ * 되도록, 기능→비트 매핑이 필요한 내부 코드는 이 헬퍼를 사용합니다.
+ * 이 파일 내부 전용 헬퍼이므로 static(내부 링크)으로 둡니다.
+ *
+ * @param reg 대상 Register::exx[] 인덱스.
+ * @param feature 비트를 조회할 기능 식별자.
+ * @return 해당 기능의 비트 마스크. reg 가 일치하지 않거나 테이블에
+ *         없으면 0.
+ */
 static std::uint32_t FeatureBit(std::uint8_t reg, CpuFeature feature) {
   const auto it = kFeatureAndMask.find(feature);
   if (it != kFeatureAndMask.end() && it->second.reg == reg) {
@@ -359,6 +382,15 @@ static std::uint32_t FeatureBit(std::uint8_t reg, CpuFeature feature) {
 }
 #endif
 
+/**
+ * @brief x86/x64 에서 CPUID 로 CPU 기능 레지스터를 조회합니다.
+ *
+ * leaf 1, leaf 7(서브리프 0/1), 확장 leaf 0x80000001/0x80000008/
+ * 0x80000021 조회 결과를 Register::exx 에 채웁니다. BEDROCK_ARCH_X86
+ * 이 아니면 0으로 초기화된 Register 를 그대로 반환합니다.
+ *
+ * @return CPUID 결과가 채워진(또는 미지원 시 0인) Register.
+ */
 static Register GetX86CpuFeatures() {
   Register features = {};
 #if BEDROCK_ARCH_X86
@@ -407,6 +439,17 @@ static Register GetX86CpuFeatures() {
   return features;
 }
 
+/**
+ * @brief ARM 에서 플랫폼별 방법으로 CPU 기능 레지스터를 조회합니다.
+ *
+ * Linux 는 getauxval(AT_HWCAP/AT_HWCAP2), macOS(애플 실리콘)는
+ * sysctlbyname("hw.optional.arm.FEAT_*"), Windows(ARM)는
+ * IsProcessorFeaturePresent(PF_ARM_*) 결과를 HWCAP/HWCAP2 와 같은
+ * 비트 위치에 채웁니다. BEDROCK_ARCH_ARM 이 아니거나 위 플랫폼에
+ * 해당하지 않으면 0으로 초기화된 Register 를 그대로 반환합니다.
+ *
+ * @return 플랫폼별 조회 결과가 채워진(또는 미지원 시 0인) Register.
+ */
 static Register GetARMCpuFeatures() {
   Register features = {};
 #if BEDROCK_ARCH_ARM

@@ -1,3 +1,16 @@
+/**
+ * @file locales.cc
+ * @brief GetI18nString() 이 사용하는 i18n 번역 테이블 구현.
+ *
+ * StringKey 를 (언어별 기본 문자열, 지역별 override 문자열) 묶음에 매핑하는
+ * 테이블을 정의하고, 언어/국가에 맞는 문자열을 찾아 반환한다.
+ *
+ * @note TBD: table 의 by_language 에는 ISO639_1::kKO 데이터만 있다.
+ * kFallbackLanguage(kEN) 를 포함해 한국어 외 언어로 조회하면 현재는
+ * 모두 빈 문자열이 반환된다.
+ * @note TBD: table 의 by_region 은 모든 항목에서 비어 있다. 국가별
+ * override(예: country/kr.h)는 아직 여기에 연결되어 있지 않다.
+ */
 #include "common/i18n/locales.h"
 
 #include <cstdint>

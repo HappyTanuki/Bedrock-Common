@@ -1,3 +1,7 @@
+/**
+ * @file file.cc
+ * @brief 파일 읽기/쓰기 및 파일 내 패턴 검색 유틸리티 구현.
+ */
 #include "common/util/file.h"
 
 #include <cstring>

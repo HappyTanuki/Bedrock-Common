@@ -16,6 +16,12 @@ DATA = os.path.join(HERE, "data")
 
 
 def country_rows():
+    """country-codes.csv를 한 행씩 읽어 (alpha2, 숫자 코드, 주석) 튜플을
+    yield한다.
+
+    alpha2 또는 numeric 코드가 비어 있는 행은 건너뛴다. name은
+    official_name_en이 비어 있으면 CLDR display name으로 대체한다.
+    """
     path = os.path.join(DATA, "country-codes.csv")
     with open(path, encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -30,6 +36,12 @@ def country_rows():
 
 
 def language_rows():
+    """language-codes.csv를 한 행씩 읽어 (alpha2, None, 영어 이름)
+    튜플을 yield한다.
+
+    alpha2 길이가 2가 아닌 행(비표준 코드)은 건너뛴다. 코드값은 항상
+    None이며, 순차값 부여는 emit()에 맡긴다.
+    """
     path = os.path.join(DATA, "language-codes.csv")
     with open(path, encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -40,6 +52,13 @@ def language_rows():
 
 
 def emit(name, underlying, rows):
+    """rows로부터 `enum class {name} : {underlying} {...};` 블록을
+    표준 출력에 인쇄한다.
+
+    rows는 (enumerator, value, comment) 3튜플의 이터러블이다. value가
+    None이면 컴파일러가 매기는 순차값을 쓰고, 있으면 3자리 폭 우측
+    정렬로 세로줄을 맞춘다. 각 줄 끝에는 comment를 // 주석으로 붙인다.
+    """
     print(f"enum class {name} : {underlying} {{")
     for enumerator, value, comment in rows:
         # value 가 None 이면 순차값(0,1,2,...)을 컴파일러에 맡긴다.

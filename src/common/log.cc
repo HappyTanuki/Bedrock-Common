@@ -1,3 +1,11 @@
+/**
+ * @file log.cc
+ * @brief 스레드 안전 레벨링 콘솔 로거 구현.
+ *
+ * 타임스탬프(밀리초)·시간대·스레드 ID 접두어 구성과 TTY 여부에 따른
+ * ANSI 색상 처리를 포함해 Log()/SetLogLevel() 및 레벨별 편의 함수의
+ * 실제 동작을 구현합니다.
+ */
 #include "common/log.h"
 
 #ifdef _WIN32

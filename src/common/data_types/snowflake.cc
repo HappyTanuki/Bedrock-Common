@@ -1,3 +1,7 @@
+/**
+ * @file snowflake.cc
+ * @brief Snowflake::Generate()의 구현.
+ */
 #include "common/data_types/snowflake.h"
 
 #include <atomic>
@@ -15,6 +19,13 @@ namespace bedrock {
 // 스레드가 생성되면 번호가 래핑되어 재사용된다(timestamp+sequence로 보완).
 static constexpr std::uint16_t kThreadIdMask = 0x7F;  // 7bit: 0~127
 
+/**
+ * @brief 현재 스레드에 대해 캐시된 스레드 ID를 반환한다.
+ *
+ * 스레드가 처음 호출할 때 전역 카운터에서 순번을 받아 thread_local에
+ * 캐시하므로, 같은 스레드는 항상 같은 값을 돌려받는다.
+ * @return 0~127 범위의 스레드 식별자.
+ */
 inline static std::uint16_t GetThisThreadId() {
   static std::atomic<std::uint32_t> counter{0};
   thread_local std::uint16_t id = static_cast<std::uint16_t>(
@@ -22,6 +33,10 @@ inline static std::uint16_t GetThisThreadId() {
   return id;
 }
 
+/**
+ * @brief 현재 시각을 유닉스 에폭 기준 밀리초로 반환한다.
+ * @return 현재 시각(밀리초).
+ */
 inline static std::uint64_t CurrentTimestampMs() {
   return static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -29,7 +44,10 @@ inline static std::uint64_t CurrentTimestampMs() {
           .count());
 }
 
-// 최초 Generate() 호출 시점을 epoch으로 사용
+/**
+ * @brief 최초 Generate() 호출 시점을 epoch으로 사용한다.
+ * @return 최초 호출 시각(밀리초). 이후 호출에서도 동일한 값을 반환한다.
+ */
 inline static std::uint64_t EpochMs() {
   static const std::uint64_t epoch = CurrentTimestampMs();
   return epoch;

@@ -1,3 +1,7 @@
+/**
+ * @file base64.cc
+ * @brief base64 인코딩/디코딩 구현.
+ */
 #include "common/util/base64.h"
 
 namespace bedrock::util {
@@ -7,7 +11,11 @@ namespace {
 constexpr char kEncTable[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-// base64 문자 → 6bit 값. 유효하지 않으면 -1.
+/**
+ * @brief base64 문자를 6bit 값으로 변환한다.
+ * @param c base64 문자.
+ * @return 6bit 값(0~63), 유효하지 않으면 -1.
+ */
 int DecodeChar(unsigned char c) {
   if (c >= 'A' && c <= 'Z') return c - 'A';
   if (c >= 'a' && c <= 'z') return c - 'a' + 26;
@@ -17,6 +25,11 @@ int DecodeChar(unsigned char c) {
   return -1;
 }
 
+/**
+ * @brief base64 디코딩 시 무시할 공백류 문자인지 확인한다.
+ * @param c 검사할 문자.
+ * @return 공백/개행/탭 등이면 true.
+ */
 bool IsSkippable(unsigned char c) {
   return c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' ||
          c == '\v';

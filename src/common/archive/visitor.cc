@@ -1,3 +1,8 @@
+/**
+ * @file visitor.cc
+ * @brief Visitor::operator()(순회 진입점)과 중첩 Schema 방문,
+ * State vtable 앵커의 구현.
+ */
 #include "common/archive/visitor.h"
 
 #include "common/archive.h"
@@ -20,8 +25,5 @@ Visitor& Visitor::Visit(std::string_view name, Schema& value) {
   OnObjectEnd();
   return *this;
 }
-
-// State vtable 앵커 (weak-vtable 방지).
-Visitor::State::~State() = default;
 
 }  // namespace bedrock::archive

@@ -34,6 +34,34 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/architecture.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/linkage.cmake")
 
 # ============================================================
+# GoogleTest (테스트 전용 — 최상위 빌드에서만)
+# ============================================================
+# 경고 옵션(add_compile_options)이 디렉토리에 걸리기 전에 가져와야
+# gtest 소스가 -Werror -Weverything을 물려받지 않습니다. SYSTEM으로
+# 선언해 테스트 TU에서 gtest 헤더가 시스템 헤더(-isystem)로 취급되게
+# 합니다.
+if(PROJECT_IS_TOP_LEVEL)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+        GIT_SHALLOW    TRUE
+        SYSTEM
+    )
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    # MSVC: 런타임을 소비자와 일치(DLL CRT)시켜 링크 충돌 방지
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+    if(NOT WIN32)
+        # 라이브러리/테스트 TU와 예외·RTTI 모드를 일치시킨다
+        target_compile_options(gtest PRIVATE -fno-exceptions -fno-rtti)
+        target_compile_options(gtest_main PRIVATE -fno-exceptions -fno-rtti)
+    endif()
+endif()
+
+# ============================================================
 # Target – Common
 # ============================================================
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cc")
