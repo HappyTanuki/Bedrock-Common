@@ -16,6 +16,7 @@
 #include <unistd.h>
 #endif
 
+#include <array>
 #include <cstring>
 #include <ctime>
 #include <iostream>
@@ -25,7 +26,7 @@
 #include <thread>
 
 #ifndef _WIN32
-extern char* tzname[2];
+
 #endif
 
 namespace bedrock::log {
@@ -35,56 +36,59 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
 
-  std::uint32_t ms;
+  std::uint32_t milliseconds = 0;
 
 #ifdef _WIN32
-  LARGE_INTEGER freq, ts;
+  LARGE_INTEGER freq, monotonic_time;
   QueryPerformanceFrequency(&freq);
-  QueryPerformanceCounter(&ts);
-  ms = ts.QuadPart * 1000LL / freq.QuadPart;
+  QueryPerformanceCounter(&monotonic_time);
+  milliseconds = monotonic_time.QuadPart * 1000LL / freq.QuadPart;
   _tzset();
 #else
-  ::timespec ts;
-  ::clock_gettime(CLOCK_MONOTONIC, &ts);
-  ms = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+  ::timespec monotonic_time{};
+  ::clock_gettime(CLOCK_MONOTONIC, &monotonic_time);
+  milliseconds =
+      monotonic_time.tv_sec * 1000LL + monotonic_time.tv_nsec / 1000000LL;
 #endif
-  ms %= 1000;
-  ::time_t timer = ::time(NULL);
-  ::tm* t = ::localtime(&timer);
+  milliseconds %= 1000;
+  ::time_t timer = ::time(nullptr);
+  ::tm* local_time = ::localtime(&timer);
 
-  const char* tz = nullptr;
+  std::string prefix;
 
-  std::string prefix = "";
-
-  char buffer[100] = "";
+  std::array<char, 100> buffer{};
 
 #ifdef _WIN32
   if (::strcmp(_tzname[0], _tzname[1]) != 0) {
-    ::snprintf(buffer, sizeof(buffer),
+    ::snprintf(buffer.data(), buffer.size(),
                "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s/%s]",
-              1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
-              t->tm_min, t->tm_sec, ms, _tzname[0], _tzname[1]);
+               1900 + local_time->tm_year, local_time->tm_mon + 1,
+               local_time->tm_mday, local_time->tm_hour, local_time->tm_min,
+               local_time->tm_sec, milliseconds, _tzname[0], _tzname[1]);
   } else {
-    ::snprintf(buffer, sizeof(buffer),
+    ::snprintf(buffer.data(), buffer.size(),
                "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s]",
-              1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
-              t->tm_min, t->tm_sec, ms, _tzname[0]);
+               1900 + local_time->tm_year, local_time->tm_mon + 1,
+               local_time->tm_mday, local_time->tm_hour, local_time->tm_min,
+               local_time->tm_sec, milliseconds, _tzname[0]);
   }
 #else
   if (::strcmp(tzname[0], tzname[1]) != 0) {
-    ::snprintf(buffer, sizeof(buffer),
+    ::snprintf(buffer.data(), buffer.size(),
                "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s/%s]",
-              1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
-              t->tm_min, t->tm_sec, ms, tzname[0], tzname[1]);
+               1900 + local_time->tm_year, local_time->tm_mon + 1,
+               local_time->tm_mday, local_time->tm_hour, local_time->tm_min,
+               local_time->tm_sec, milliseconds, tzname[0], tzname[1]);
   } else {
-    ::snprintf(buffer, sizeof(buffer),
+    ::snprintf(buffer.data(), buffer.size(),
                "[%04d-%02d-%02d %02d:%02d:%02d.%03d %s]",
-              1900 + t->tm_year, t->tm_mon + 1, t->tm_mday, t->tm_hour,
-              t->tm_min, t->tm_sec, ms, tzname[0]);
+               1900 + local_time->tm_year, local_time->tm_mon + 1,
+               local_time->tm_mday, local_time->tm_hour, local_time->tm_min,
+               local_time->tm_sec, milliseconds, tzname[0]);
   }
 #endif
 
-  prefix += buffer;
+  prefix += buffer.data();
 
   if (level_setting) {
     log_level = lvl;
@@ -100,7 +104,7 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
 #if _WIN32
   is_tty = ::_isatty(_fileno(stderr));
 #else
-  is_tty = ::isatty(STDERR_FILENO);
+  is_tty = (::isatty(STDERR_FILENO) != 0);
 #endif
 
   if (is_tty) {
@@ -153,17 +157,15 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
 
   std::cerr << prefix << "[" << std::this_thread::get_id() << "]: " << msg
             << "\n";
-
-  return;
 }
 
 void SetLogLevel(Level lvl) { Log(lvl, "", true); }
 
-void Trace(std::string_view msg) { return Log(Level::kTrace, msg); }
-void Debug(std::string_view msg) { return Log(Level::kDebug, msg); }
-void Info(std::string_view msg) { return Log(Level::kInfo, msg); }
-void Warn(std::string_view msg) { return Log(Level::kWarn, msg); }
-void Error(std::string_view msg) { return Log(Level::kError, msg); }
-void Fatal(std::string_view msg) { return Log(Level::kFatal, msg); }
+void Trace(std::string_view msg) { Log(Level::kTrace, msg); }
+void Debug(std::string_view msg) { Log(Level::kDebug, msg); }
+void Info(std::string_view msg) { Log(Level::kInfo, msg); }
+void Warn(std::string_view msg) { Log(Level::kWarn, msg); }
+void Error(std::string_view msg) { Log(Level::kError, msg); }
+void Fatal(std::string_view msg) { Log(Level::kFatal, msg); }
 
 }  // namespace bedrock::log

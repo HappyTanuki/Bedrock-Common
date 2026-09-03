@@ -3,10 +3,12 @@
  * @brief bedrock 공용 인터페이스와 CRTP 헬퍼 정의.
  */
 #pragma once
+#include <cstddef>
 #include <cstdint>
-#include <span>
-#include <vector>
 #include <optional>
+#include <span>
+#include <utility>
+#include <vector>
 
 #include "types_enums.h"
 
@@ -23,6 +25,10 @@ class Validatable {
   Validatable(const Validatable&) = default;
   /** @brief 복사 대입 연산자. */
   Validatable& operator=(const Validatable&) = default;
+  /** @brief 이동 생성자. */
+  Validatable(Validatable&&) = default;
+  /** @brief 이동 대입 연산자. */
+  Validatable& operator=(Validatable&&) = default;
   /** @brief 가상 소멸자. */
   virtual ~Validatable();
 
@@ -30,7 +36,7 @@ class Validatable {
    * @brief 객체가 유효한 상태인지 확인한다.
    * @return 유효하면 true.
    */
-  virtual bool IsValid() const = 0;
+  [[nodiscard]] virtual bool IsValid() const = 0;
 };
 
 /**
@@ -48,6 +54,10 @@ class ReadWritable {
   /** @brief 복사 대입 연산자. */
   ReadWritable& operator=(const ReadWritable&) = default;
 
+  /** @brief 이동 생성자. */
+  ReadWritable(ReadWritable&&) = default;
+  /** @brief 이동 대입 연산자. */
+  ReadWritable& operator=(ReadWritable&&) = default;
   /** @brief 가상 소멸자. */
   virtual ~ReadWritable() = default;
 

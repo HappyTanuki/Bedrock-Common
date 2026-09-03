@@ -1,5 +1,5 @@
 ﻿{
-  "version": 9,
+  "version": 5,
   "include": [
     ".cmake/presets/common.json",
     ".cmake/presets/windows.json",

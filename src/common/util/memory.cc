@@ -31,4 +31,4 @@ std::span<const std::uint8_t>::iterator FindPatternFromData(
   return FindPatternFromDataImpl<std::span<const std::uint8_t>>(data, pattern);
 }
 
-}
+}  // namespace bedrock::util

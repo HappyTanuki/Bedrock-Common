@@ -9,7 +9,7 @@
 namespace bedrock::locale {
 
 // https://github.com/datasets/country-codes/blob/main/data/country-codes.csv
-enum class ISO3166_1 : std::uint16_t {
+enum class IsO31661 : std::uint16_t {
   kAF =   4,  // 004 Afghanistan
   kAX = 248,  // 248 Åland Islands
   kAL =   8,  // 008 Albania
@@ -262,7 +262,7 @@ enum class ISO3166_1 : std::uint16_t {
 };
 
 // https://github.com/datasets/language-codes/blob/main/data/language-codes.csv
-enum class ISO639_1 : std::uint8_t {
+enum class IsO6391 : std::uint8_t {
   kAA,  // Afar
   kAB,  // Abkhazian
   kAE,  // Avestan

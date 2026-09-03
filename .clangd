@@ -1,4 +1,4 @@
 CompileFlags:
-    CompilationDatabase: output
+  CompilationDatabase: ./output
 Documentation:
-    CommentFormat: Doxygen
+  CommentFormat: Doxygen

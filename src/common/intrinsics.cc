@@ -4,16 +4,35 @@
  *
  * x86은 CPUID와 XCR0(OS 확장 상태) 검증을, ARM은 플랫폼별
  * HWCAP/HWCAP2(Linux), sysctlbyname(macOS), IsProcessorFeaturePresent
- * (Windows)를 사용합니다. CpuFeature → {레지스터, 비트} 매핑은
+ * (Windows)를 사용합니다. CpuFeature -> {레지스터, 비트} 매핑은
  * kFeatureAndMask 테이블을 단일 진실 공급원으로 삼습니다.
  */
 #include "common/intrinsics.h"
+
+#include <bedrock_common_config.h>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
 #include <utility>
+
+#if BEDROCK_ARCH_X86
+#ifndef _WIN32
+#include <cpuid.h>
+#else
+#include <intrin.h>
+#endif
+#include <immintrin.h>
+#endif
+
+#if BEDROCK_ARCH_ARM
+#if defined(__linux__)
+#include <sys/auxv.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
+#endif
 
 // Windows on ARM: IsProcessorFeaturePresent.
 // <windows.h>는 매크로 오염이 심해 헤더가 아닌 여기서만 include합니다.
@@ -29,14 +48,14 @@ namespace bedrock::intrinsic {
 // 기능 하나 = {CpuFeature 식별자, {Register::exx 인덱스, 비트 번호}}.
 // 비트 번호는 Intel SDM Vol.2A / AMD APM Vol.3 / Linux hwcap.h 의
 // 표기를 그대로 사용합니다. 예: AESNI = CPUID.01H:ECX[bit 25]
-//                              → {CpuFeature::kAESNI, {kLeaf1Ecx, 25}}
+//                              -> {CpuFeature::kAESNI, {kLeaf1Ecx, 25}}
 struct FeatureMaskData {
   std::uint8_t reg;  // Register::exx[] 인덱스
   std::uint8_t bit;  // 레지스터 내 비트 번호 (0-31)
 };
 
 #if BEDROCK_ARCH_X86
-// Register::exx[] 인덱스 (CPUID leaf/레지스터 → 저장 위치)
+// Register::exx[] 인덱스 (CPUID leaf/레지스터 -> 저장 위치)
 constexpr const std::uint8_t kLeaf1Ecx = 2;       // CPUID.01H:ECX
 constexpr const std::uint8_t kLeaf1Edx = 3;       // CPUID.01H:EDX
 constexpr const std::uint8_t kLeaf7Ebx = 5;       // CPUID.07H(sub0):EBX
@@ -86,13 +105,13 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {
     {CpuFeature::kPCLMULQDQ,           {kLeaf1Ecx,      1}},
     {CpuFeature::kDTES64,              {kLeaf1Ecx,      2}},
     {CpuFeature::kMONITOR,             {kLeaf1Ecx,      3}},
-    {CpuFeature::kDS_CPL,              {kLeaf1Ecx,      4}},
+    {CpuFeature::kDsCpl,              {kLeaf1Ecx,      4}},
     {CpuFeature::kVMX,                 {kLeaf1Ecx,      5}},
     {CpuFeature::kSMX,                 {kLeaf1Ecx,      6}},
     {CpuFeature::kEST,                 {kLeaf1Ecx,      7}},
     {CpuFeature::kTM2,                 {kLeaf1Ecx,      8}},
     {CpuFeature::kSSSE3,               {kLeaf1Ecx,      9}},
-    {CpuFeature::kCNXT_ID,             {kLeaf1Ecx,     10}},
+    {CpuFeature::kCnxtId,             {kLeaf1Ecx,     10}},
     {CpuFeature::kSDBG,                {kLeaf1Ecx,     11}},
     {CpuFeature::kFMA,                 {kLeaf1Ecx,     12}},
     {CpuFeature::kCMPXCHG16B,          {kLeaf1Ecx,     13}},
@@ -100,12 +119,12 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {
     {CpuFeature::kPDCM,                {kLeaf1Ecx,     15}},
     {CpuFeature::kPCID,                {kLeaf1Ecx,     17}},
     {CpuFeature::kDCA,                 {kLeaf1Ecx,     18}},
-    {CpuFeature::kSSE4_1,              {kLeaf1Ecx,     19}},
-    {CpuFeature::kSSE4_2,              {kLeaf1Ecx,     20}},
+    {CpuFeature::kSsE41,              {kLeaf1Ecx,     19}},
+    {CpuFeature::kSsE42,              {kLeaf1Ecx,     20}},
     {CpuFeature::kX2APIC,              {kLeaf1Ecx,     21}},
     {CpuFeature::kMOVBE,               {kLeaf1Ecx,     22}},
     {CpuFeature::kPOPCNT,              {kLeaf1Ecx,     23}},
-    {CpuFeature::kTSC_DEADLINE,        {kLeaf1Ecx,     24}},
+    {CpuFeature::kTscDeadline,        {kLeaf1Ecx,     24}},
     {CpuFeature::kAESNI,               {kLeaf1Ecx,     25}},
     {CpuFeature::kXSAVE,               {kLeaf1Ecx,     26}},
     {CpuFeature::kOSXSAVE,             {kLeaf1Ecx,     27}},
@@ -121,7 +140,7 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {
     {CpuFeature::kAVX512DQ,            {kLeaf7Ebx,     17}},
     {CpuFeature::kRDSEED,              {kLeaf7Ebx,     18}},
     {CpuFeature::kADX,                 {kLeaf7Ebx,     19}},
-    {CpuFeature::kAVX512_IFMA,         {kLeaf7Ebx,     21}},
+    {CpuFeature::kAvX512Ifma,         {kLeaf7Ebx,     21}},
     {CpuFeature::kCLFLUSHOPT,          {kLeaf7Ebx,     23}},
     {CpuFeature::kCLWB,                {kLeaf7Ebx,     24}},
     {CpuFeature::kAVX512PF,            {kLeaf7Ebx,     26}},
@@ -132,15 +151,15 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {
     {CpuFeature::kAVX512VL,            {kLeaf7Ebx,     31}},
     // ---- kLeaf7Ecx ----
     {CpuFeature::kPREFETCHWT1,         {kLeaf7Ecx,      0}},
-    {CpuFeature::kAVX512_VBMI,         {kLeaf7Ecx,      1}},
+    {CpuFeature::kAvX512Vbmi,         {kLeaf7Ecx,      1}},
     {CpuFeature::kWAITPKG,             {kLeaf7Ecx,      5}},
-    {CpuFeature::kAVX512_VBMI2,        {kLeaf7Ecx,      6}},
+    {CpuFeature::kAvX512VbmI2,        {kLeaf7Ecx,      6}},
     {CpuFeature::kGFNI,                {kLeaf7Ecx,      8}},
     {CpuFeature::kVAES,                {kLeaf7Ecx,      9}},
     {CpuFeature::kVPCLMULQDQ,          {kLeaf7Ecx,     10}},
-    {CpuFeature::kAVX512_VNNI,         {kLeaf7Ecx,     11}},
-    {CpuFeature::kAVX512_BITALG,       {kLeaf7Ecx,     12}},
-    {CpuFeature::kAVX512_VPOPCNTDQ,    {kLeaf7Ecx,     14}},
+    {CpuFeature::kAvX512Vnni,         {kLeaf7Ecx,     11}},
+    {CpuFeature::kAvX512Bitalg,       {kLeaf7Ecx,     12}},
+    {CpuFeature::kAvX512Vpopcntdq,    {kLeaf7Ecx,     14}},
     {CpuFeature::kRDPID,               {kLeaf7Ecx,     22}},
     {CpuFeature::kKL,                  {kLeaf7Ecx,     23}},
     {CpuFeature::kCLDEMOTE,            {kLeaf7Ecx,     25}},
@@ -148,18 +167,18 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {
     {CpuFeature::kMOVDIR64B,           {kLeaf7Ecx,     28}},
     {CpuFeature::kENQCMD,              {kLeaf7Ecx,     29}},
     // ---- kLeaf7Edx ----
-    {CpuFeature::kAVX512_4VNNIW,       {kLeaf7Edx,      2}},
-    {CpuFeature::kAVX512_4FMAPS,       {kLeaf7Edx,      3}},
+    {CpuFeature::kAvX5124Vnniw,       {kLeaf7Edx,      2}},
+    {CpuFeature::kAvX5124Fmaps,       {kLeaf7Edx,      3}},
     {CpuFeature::kFSRM,                {kLeaf7Edx,      4}},
     {CpuFeature::kUINTR,               {kLeaf7Edx,      5}},
-    {CpuFeature::kAVX512_VP2INTERSECT, {kLeaf7Edx,      8}},
+    {CpuFeature::kAvX512VP2Intersect, {kLeaf7Edx,      8}},
     {CpuFeature::kSERIALIZE,           {kLeaf7Edx,     14}},
-    {CpuFeature::kAMX_BF16,            {kLeaf7Edx,     22}},
-    {CpuFeature::kAVX512_FP16,         {kLeaf7Edx,     23}},
-    {CpuFeature::kAMX_TILE,            {kLeaf7Edx,     24}},
-    {CpuFeature::kAMX_INT8,            {kLeaf7Edx,     25}},
+    {CpuFeature::kAmxBF16,            {kLeaf7Edx,     22}},
+    {CpuFeature::kAvX512FP16,         {kLeaf7Edx,     23}},
+    {CpuFeature::kAmxTile,            {kLeaf7Edx,     24}},
+    {CpuFeature::kAmxInT8,            {kLeaf7Edx,     25}},
     // ---- kExt1Ecx ----
-    {CpuFeature::kLAHF_LM,             {kExt1Ecx,       0}},
+    {CpuFeature::kLahfLm,             {kExt1Ecx,       0}},
     {CpuFeature::kLZCNT,               {kExt1Ecx,       5}},
     {CpuFeature::kSSE4A,               {kExt1Ecx,       6}},
     {CpuFeature::kPREFETCHW,           {kExt1Ecx,       8}},
@@ -171,17 +190,17 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {
     {CpuFeature::kMMXEXT,              {kExt1Edx,      22}},
     {CpuFeature::kRDTSCP,              {kExt1Edx,      27}},
     {CpuFeature::kLM,                  {kExt1Edx,      29}},
-    {CpuFeature::k3DNOWEXT,            {kExt1Edx,      30}},
-    {CpuFeature::k3DNOW,               {kExt1Edx,      31}},
+    {CpuFeature::k3Dnowext,            {kExt1Edx,      30}},
+    {CpuFeature::k3Dnow,               {kExt1Edx,      31}},
     // ---- kLeaf7Sub1Eax ----
     {CpuFeature::kSHA512,              {kLeaf7Sub1Eax,  0}},
     {CpuFeature::kSM3,                 {kLeaf7Sub1Eax,  1}},
     {CpuFeature::kSM4,                 {kLeaf7Sub1Eax,  2}},
-    {CpuFeature::kAVX_VNNI,            {kLeaf7Sub1Eax,  4}},
-    {CpuFeature::kAVX512_BF16,         {kLeaf7Sub1Eax,  5}},
+    {CpuFeature::kAvxVnni,            {kLeaf7Sub1Eax,  4}},
+    {CpuFeature::kAvX512BF16,         {kLeaf7Sub1Eax,  5}},
     {CpuFeature::kCMPCCXADD,           {kLeaf7Sub1Eax,  7}},
-    {CpuFeature::kAMX_FP16,            {kLeaf7Sub1Eax, 21}},
-    {CpuFeature::kAVX_IFMA,            {kLeaf7Sub1Eax, 23}},
+    {CpuFeature::kAmxFP16,            {kLeaf7Sub1Eax, 21}},
+    {CpuFeature::kAvxIfma,            {kLeaf7Sub1Eax, 23}},
     {CpuFeature::kMOVRS,               {kLeaf7Sub1Eax, 31}},
     // ---- kExt8Ebx ----
     {CpuFeature::kCLZERO,              {kExt8Ebx,       0}},
@@ -189,7 +208,7 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {
     {CpuFeature::kWBNOINVD,            {kExt8Ebx,       9}},
     // ---- kExt21Eax ----
     {CpuFeature::kPREFETCHI,           {kExt21Eax,     20}},
-    {CpuFeature::kAVX512_BMM,          {kExt21Eax,     23}},
+    {CpuFeature::kAvX512Bmm,          {kExt21Eax,     23}},
 };
 // clang-format on
 
@@ -218,8 +237,8 @@ static const std::map<CpuFeature, std::uint64_t> kRequiredXcr0 = {
     {CpuFeature::kF16C,                kXcr0Ymm},
     {CpuFeature::kVAES,                kXcr0Ymm},
     {CpuFeature::kVPCLMULQDQ,          kXcr0Ymm},
-    {CpuFeature::kAVX_VNNI,            kXcr0Ymm},
-    {CpuFeature::kAVX_IFMA,            kXcr0Ymm},
+    {CpuFeature::kAvxVnni,            kXcr0Ymm},
+    {CpuFeature::kAvxIfma,            kXcr0Ymm},
     {CpuFeature::kXOP,                 kXcr0Ymm},
     {CpuFeature::kFMA4,                kXcr0Ymm},
     {CpuFeature::kSHA512,              kXcr0Ymm},  // x86: VEX(YMM) 인코딩
@@ -228,28 +247,28 @@ static const std::map<CpuFeature, std::uint64_t> kRequiredXcr0 = {
     // ---- AVX-512 계열 (ZMM) ----
     {CpuFeature::kAVX512F,             kXcr0Zmm},
     {CpuFeature::kAVX512DQ,            kXcr0Zmm},
-    {CpuFeature::kAVX512_IFMA,         kXcr0Zmm},
+    {CpuFeature::kAvX512Ifma,         kXcr0Zmm},
     {CpuFeature::kAVX512PF,            kXcr0Zmm},
     {CpuFeature::kAVX512ER,            kXcr0Zmm},
     {CpuFeature::kAVX512CD,            kXcr0Zmm},
     {CpuFeature::kAVX512BW,            kXcr0Zmm},
     {CpuFeature::kAVX512VL,            kXcr0Zmm},
-    {CpuFeature::kAVX512_VBMI,         kXcr0Zmm},
-    {CpuFeature::kAVX512_VBMI2,        kXcr0Zmm},
-    {CpuFeature::kAVX512_VNNI,         kXcr0Zmm},
-    {CpuFeature::kAVX512_BITALG,       kXcr0Zmm},
-    {CpuFeature::kAVX512_VPOPCNTDQ,    kXcr0Zmm},
-    {CpuFeature::kAVX512_4VNNIW,       kXcr0Zmm},
-    {CpuFeature::kAVX512_4FMAPS,       kXcr0Zmm},
-    {CpuFeature::kAVX512_VP2INTERSECT, kXcr0Zmm},
-    {CpuFeature::kAVX512_FP16,         kXcr0Zmm},
-    {CpuFeature::kAVX512_BF16,         kXcr0Zmm},
-    {CpuFeature::kAVX512_BMM,          kXcr0Zmm},
+    {CpuFeature::kAvX512Vbmi,         kXcr0Zmm},
+    {CpuFeature::kAvX512VbmI2,        kXcr0Zmm},
+    {CpuFeature::kAvX512Vnni,         kXcr0Zmm},
+    {CpuFeature::kAvX512Bitalg,       kXcr0Zmm},
+    {CpuFeature::kAvX512Vpopcntdq,    kXcr0Zmm},
+    {CpuFeature::kAvX5124Vnniw,       kXcr0Zmm},
+    {CpuFeature::kAvX5124Fmaps,       kXcr0Zmm},
+    {CpuFeature::kAvX512VP2Intersect, kXcr0Zmm},
+    {CpuFeature::kAvX512FP16,         kXcr0Zmm},
+    {CpuFeature::kAvX512BF16,         kXcr0Zmm},
+    {CpuFeature::kAvX512Bmm,          kXcr0Zmm},
     // ---- AMX 계열 (TILE) ----
-    {CpuFeature::kAMX_TILE,            kXcr0Tile},
-    {CpuFeature::kAMX_BF16,            kXcr0Tile},
-    {CpuFeature::kAMX_INT8,            kXcr0Tile},
-    {CpuFeature::kAMX_FP16,            kXcr0Tile},
+    {CpuFeature::kAmxTile,            kXcr0Tile},
+    {CpuFeature::kAmxBF16,            kXcr0Tile},
+    {CpuFeature::kAmxInT8,            kXcr0Tile},
+    {CpuFeature::kAmxFP16,            kXcr0Tile},
 };
 // clang-format on
 
@@ -264,21 +283,21 @@ static const std::map<CpuFeature, std::uint64_t> kRequiredXcr0 = {
  */
 static std::uint64_t ReadXcr0() {
 #ifdef _WIN32
-  static const std::uint64_t xcr0 = _xgetbv(0);
+  static const std::uint64_t kXcr0 = _xgetbv(0);
 #else
   // gcc/clang 의 _xgetbv 인트린식은 -mxsave 플래그를 요구하므로,
   // 플래그 의존이 없는 인라인 어셈블리를 사용합니다.
-  static const std::uint64_t xcr0 = [] {
+  static const std::uint64_t kXcr0 = [] {
     std::uint32_t eax = 0;
     std::uint32_t edx = 0;
-    __asm__ volatile("xgetbv" : "=a"(eax), "=d"(edx) : "c"(0u));
+    __asm__ volatile("xgetbv" : "=a"(eax), "=d"(edx) : "c"(0U));
     return (static_cast<std::uint64_t>(edx) << 32) | eax;
   }();
 #endif
-  return xcr0;
+  return kXcr0;
 }
 #elif BEDROCK_ARCH_ARM
-// Register::exx[] 인덱스 (HWCAP → 저장 위치. 상위 32비트는 exx[1]/exx[3])
+// Register::exx[] 인덱스 (HWCAP -> 저장 위치. 상위 32비트는 exx[1]/exx[3])
 constexpr const std::uint8_t kHwcapLo = 0;   // HWCAP  하위 32비트
 constexpr const std::uint8_t kHwcap2Lo = 2;  // HWCAP2 하위 32비트
 
@@ -365,7 +384,7 @@ static const std::map<CpuFeature, FeatureMaskData> kFeatureAndMask = {};
  * @brief 테이블에서 (레지스터, 기능)에 해당하는 비트 마스크를 얻습니다.
  *
  * kFeatureAndMask 테이블이 단일 진실 공급원(single source of truth)이
- * 되도록, 기능→비트 매핑이 필요한 내부 코드는 이 헬퍼를 사용합니다.
+ * 되도록, 기능->비트 매핑이 필요한 내부 코드는 이 헬퍼를 사용합니다.
  * 이 파일 내부 전용 헬퍼이므로 static(내부 링크)으로 둡니다.
  *
  * @param reg 대상 Register::exx[] 인덱스.
@@ -397,17 +416,17 @@ static Register GetX86CpuFeatures() {
 #ifndef _WIN32
   // leaf 1, leaf 7(sub0), 확장 leaf 0x80000001. __get_cpuid* 는 지원 leaf를
   // 내부 검사하여 미지원 시 아무것도 쓰지 않음(0 유지).
-  __get_cpuid(1u, &features.exx[0], &features.exx[1], &features.exx[2],
+  __get_cpuid(1U, features.exx.data(), &features.exx[1], &features.exx[2],
               &features.exx[3]);
-  __get_cpuid_count(7u, 0u, &features.exx[4], &features.exx[5],
+  __get_cpuid_count(7U, 0U, &features.exx[4], &features.exx[5],
                     &features.exx[6], &features.exx[7]);
-  __get_cpuid(0x80000001u, &features.exx[8], &features.exx[9],
+  __get_cpuid(0x80000001U, &features.exx[8], &features.exx[9],
               &features.exx[10], &features.exx[11]);
-  __get_cpuid_count(7u, 1u, &features.exx[12], &features.exx[13],
+  __get_cpuid_count(7U, 1U, &features.exx[12], &features.exx[13],
                     &features.exx[14], &features.exx[15]);
-  __get_cpuid(0x80000008u, &features.exx[16], &features.exx[17],
+  __get_cpuid(0x80000008U, &features.exx[16], &features.exx[17],
               &features.exx[18], &features.exx[19]);
-  __get_cpuid(0x80000021u, &features.exx[20], &features.exx[21],
+  __get_cpuid(0x80000021U, &features.exx[20], &features.exx[21],
               &features.exx[22], &features.exx[23]);
 #else
   int regs[4] = {0, 0, 0, 0};
@@ -595,11 +614,12 @@ static Register GetARMCpuFeatures() {
 //            결과를 위 비트 정의대로 담습니다.
 //  그 외   : 0(모든 기능 미지원).
 Register GetCPUFeatures() {
-  Register features = {};
 #if BEDROCK_ARCH_X86
   return GetX86CpuFeatures();
 #elif BEDROCK_ARCH_ARM
   return GetARMCpuFeatures();
+#else
+  return {};  // 미지원 아키텍처 — 모든 기능 미지원.
 #endif
 }
 
@@ -608,8 +628,8 @@ bool HasFeature(const Register& cpu_feature_flag, CpuFeature feature) {
   if (mask == kFeatureAndMask.end()) {
     return false;
   }
-  if ((cpu_feature_flag.exx[mask->second.reg] & (1u << mask->second.bit)) ==
-      0x0u) {
+  if ((cpu_feature_flag.exx[mask->second.reg] & (1U << mask->second.bit)) ==
+      0x0U) {
     return false;
   }
 #if BEDROCK_ARCH_X86
@@ -628,4 +648,4 @@ bool HasFeature(const Register& cpu_feature_flag, CpuFeature feature) {
   return true;
 }
 
-};  // namespace bedrock::intrinsic
+}  // namespace bedrock::intrinsic

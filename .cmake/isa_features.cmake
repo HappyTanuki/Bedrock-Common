@@ -3,10 +3,7 @@
 # ============================================================
 # 전제: 실행할 그 머신에서 직접 빌드한다(소스 기반 배포처럼).
 #   - -march=native(x86) / -mcpu=native(ARM) / /arch(MSVC) 로 빌드 머신의
-#     명령어셋을 컴파일러가 모두 켠다 → 그 CPU가 가진 인트린식은 그대로 컴파일됨.
-#   - "이 CPU가 X를 지원하나"의 판단은 전적으로 런타임(GetCPUFeatures/
-#     IsCpuEnabledFeature, CPUID/HWCAP 실측)이 담당한다. 컴파일타임 매크로는 두지 않는다.
-#     (컴파일러 사전정의 매크로나 configure 프로브는 부정확/취약하므로 쓰지 않음.)
+#     명령어셋을 컴파일러가 모두 켠다 -> 그 CPU가 가진 인트린식은 그대로 컴파일됨.
 #
 # 선행 조건: architecture.cmake(BEDROCK_ARCH_X86/ARM) 와 타겟 생성 이후 include.
 

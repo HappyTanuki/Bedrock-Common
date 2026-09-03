@@ -1,12 +1,19 @@
 {
-  "version": 9,
+  "version": 5,
   "include": [ "common.json" ],
   "configurePresets": [
     {
-      "name": "Windows-Build",
+      "name": "Windows-Build-x86",
       "hidden": true,
-      "inherits": [ "Paths" ],
       "generator": "Ninja",
+      "architecture": {
+        "value": "x86",
+        "strategy": "external"
+      },
+      "toolset": {
+        "value": "host=x86",
+        "strategy": "external"
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -14,84 +21,210 @@
       }
     },
     {
-      "name": "x64Windows",
+      "name": "Windows-Build-x64",
       "hidden": true,
+      "generator": "Ninja",
       "architecture": {
         "value": "x64",
         "strategy": "external"
+      },
+      "toolset": {
+        "value": "host=x86",
+        "strategy": "external"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     },
     {
       "name": "MD",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
-        "ENCRYPTION_LINKAGE": "DYNAMIC"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL"
       }
     },
     {
       "name": "MT",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
-        "ENCRYPTION_LINKAGE": "STATIC"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded"
       }
     },
     {
       "name": "MDd",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebugDLL",
-        "ENCRYPTION_LINKAGE": "DYNAMIC"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebugDLL"
       }
     },
     {
       "name": "MTd",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug",
-        "ENCRYPTION_LINKAGE": "STATIC"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug"
       }
     },
     {
-      "name": "Windows-x64-Debug",
-      "displayName": "Windows x64 Debug",
-      "inherits": [ "Windows-Build", "Debug", "x64Windows", "MDd" ]
+      "name": "Windows-x86-Shared-Debug-MD",
+      "displayName": "Windows x86 Shared Debug MD",
+      "inherits": [ "Paths", "Windows-Build-x86", "Shared", "Debug", "MDd" ]
     },
     {
-      "name": "Windows-x64-Release",
-      "displayName": "Windows x64 Release",
-      "inherits": [ "Windows-Build", "Release", "x64Windows", "MD" ]
+      "name": "Windows-x86-Shared-Debug-MT",
+      "displayName": "Windows x86 Shared Debug MT",
+      "inherits": [ "Paths", "Windows-Build-x86", "Shared", "Debug", "MTd" ]
     },
     {
-      "name": "Windows-x64-Debug-MT",
-      "displayName": "Windows x64 Debug MT",
-      "inherits": [ "Windows-Build", "Debug", "x64Windows", "MTd" ]
+      "name": "Windows-x86-Shared-Release-MD",
+      "displayName": "Windows x86 Shared Release MD",
+      "inherits": [ "Paths", "Windows-Build-x86", "Shared", "Release", "MD" ]
     },
     {
-      "name": "Windows-x64-Release-MT",
-      "displayName": "Windows x64 Release MT",
-      "inherits": [ "Windows-Build", "Release", "x64Windows", "MT" ]
+      "name": "Windows-x86-Shared-Release-MT",
+      "displayName": "Windows x86 Shared Release MT",
+      "inherits": [ "Paths", "Windows-Build-x86", "Shared", "Release", "MT" ]
+    },
+    {
+      "name": "Windows-x86-Shared-RelWithDebInfo-MD",
+      "displayName": "Windows x86 Shared RelWithDebInfo MD",
+      "inherits": [ "Paths", "Windows-Build-x86", "Shared", "RelWithDebInfo", "MD" ]
+    },
+    {
+      "name": "Windows-x86-Shared-RelWithDebInfo-MT",
+      "displayName": "Windows x86 Shared RelWithDebInfo MT",
+      "inherits": [ "Paths", "Windows-Build-x86", "Shared", "RelWithDebInfo", "MT" ]
+    },
+    {
+      "name": "Windows-x86-Shared-MinSizeRel-MD",
+      "displayName": "Windows x86 Shared MinSizeRel MD",
+      "inherits": [ "Paths", "Windows-Build-x86", "Shared", "MinSizeRel", "MD" ]
+    },
+    {
+      "name": "Windows-x86-Shared-MinSizeRel-MT",
+      "displayName": "Windows x86 Shared MinSizeRel MT",
+      "inherits": [ "Paths", "Windows-Build-x86", "Shared", "MinSizeRel", "MT" ]
+    },
+    {
+      "name": "Windows-x86-Static-Debug-MD",
+      "displayName": "Windows x86 Static Debug MD",
+      "inherits": [ "Paths", "Windows-Build-x86", "Static", "Debug", "MDd" ]
+    },
+    {
+      "name": "Windows-x86-Static-Debug-MT",
+      "displayName": "Windows x86 Static Debug MT",
+      "inherits": [ "Paths", "Windows-Build-x86", "Static", "Debug", "MTd" ]
+    },
+    {
+      "name": "Windows-x86-Static-Release-MD",
+      "displayName": "Windows x86 Static Release MD",
+      "inherits": [ "Paths", "Windows-Build-x86", "Static", "Release", "MD" ]
+    },
+    {
+      "name": "Windows-x86-Static-Release-MT",
+      "displayName": "Windows x86 Static Release MT",
+      "inherits": [ "Paths", "Windows-Build-x86", "Static", "Release", "MT" ]
+    },
+    {
+      "name": "Windows-x86-Static-RelWithDebInfo-MD",
+      "displayName": "Windows x86 Static RelWithDebInfo MD",
+      "inherits": [ "Paths", "Windows-Build-x86", "Static", "RelWithDebInfo", "MD" ]
+    },
+    {
+      "name": "Windows-x86-Static-RelWithDebInfo-MT",
+      "displayName": "Windows x86 Static RelWithDebInfo MT",
+      "inherits": [ "Paths", "Windows-Build-x86", "Static", "RelWithDebInfo", "MT" ]
+    },
+    {
+      "name": "Windows-x86-Static-MinSizeRel-MD",
+      "displayName": "Windows x86 Static MinSizeRel MD",
+      "inherits": [ "Paths", "Windows-Build-x86", "Static", "MinSizeRel", "MD" ]
+    },
+    {
+      "name": "Windows-x86-Static-MinSizeRel-MT",
+      "displayName": "Windows x86 Static MinSizeRel MT",
+      "inherits": [ "Paths", "Windows-Build-x86", "Static", "MinSizeRel", "MT" ]
+    },
+    {
+      "name": "Windows-x64-Shared-Debug-MD",
+      "displayName": "Windows x64 Shared Debug MD",
+      "inherits": [ "Paths", "Windows-Build-x64", "Shared", "Debug", "MDd" ]
+    },
+    {
+      "name": "Windows-x64-Shared-Debug-MT",
+      "displayName": "Windows x64 Shared Debug MT",
+      "inherits": [ "Paths", "Windows-Build-x64", "Shared", "Debug", "MTd" ]
+    },
+    {
+      "name": "Windows-x64-Shared-Release-MD",
+      "displayName": "Windows x64 Shared Release MD",
+      "inherits": [ "Paths", "Windows-Build-x64", "Shared", "Release", "MD" ]
+    },
+    {
+      "name": "Windows-x64-Shared-Release-MT",
+      "displayName": "Windows x64 Shared Release MT",
+      "inherits": [ "Paths", "Windows-Build-x64", "Shared", "Release", "MT" ]
+    },
+    {
+      "name": "Windows-x64-Shared-RelWithDebInfo-MD",
+      "displayName": "Windows x64 Shared RelWithDebInfo MD",
+      "inherits": [ "Paths", "Windows-Build-x64", "Shared", "RelWithDebInfo", "MD" ]
+    },
+    {
+      "name": "Windows-x64-Shared-RelWithDebInfo-MT",
+      "displayName": "Windows x64 Shared RelWithDebInfo MT",
+      "inherits": [ "Paths", "Windows-Build-x64", "Shared", "RelWithDebInfo", "MT" ]
+    },
+    {
+      "name": "Windows-x64-Shared-MinSizeRel-MD",
+      "displayName": "Windows x64 Shared MinSizeRel MD",
+      "inherits": [ "Paths", "Windows-Build-x64", "Shared", "MinSizeRel", "MD" ]
+    },
+    {
+      "name": "Windows-x64-Shared-MinSizeRel-MT",
+      "displayName": "Windows x64 Shared MinSizeRel MT",
+      "inherits": [ "Paths", "Windows-Build-x64", "Shared", "MinSizeRel", "MT" ]
+    },
+    {
+      "name": "Windows-x64-Static-Debug-MD",
+      "displayName": "Windows x64 Static Debug MD",
+      "inherits": [ "Paths", "Windows-Build-x64", "Static", "Debug", "MDd" ]
+    },
+    {
+      "name": "Windows-x64-Static-Debug-MT",
+      "displayName": "Windows x64 Static Debug MT",
+      "inherits": [ "Paths", "Windows-Build-x64", "Static", "Debug", "MTd" ]
+    },
+    {
+      "name": "Windows-x64-Static-Release-MD",
+      "displayName": "Windows x64 Static Release MD",
+      "inherits": [ "Paths", "Windows-Build-x64", "Static", "Release", "MD" ]
+    },
+    {
+      "name": "Windows-x64-Static-Release-MT",
+      "displayName": "Windows x64 Static Release MT",
+      "inherits": [ "Paths", "Windows-Build-x64", "Static", "Release", "MT" ]
+    },
+    {
+      "name": "Windows-x64-Static-RelWithDebInfo-MD",
+      "displayName": "Windows x64 Static RelWithDebInfo MD",
+      "inherits": [ "Paths", "Windows-Build-x64", "Static", "RelWithDebInfo", "MD" ]
+    },
+    {
+      "name": "Windows-x64-Static-RelWithDebInfo-MT",
+      "displayName": "Windows x64 Static RelWithDebInfo MT",
+      "inherits": [ "Paths", "Windows-Build-x64", "Static", "RelWithDebInfo", "MT" ]
+    },
+    {
+      "name": "Windows-x64-Static-MinSizeRel-MD",
+      "displayName": "Windows x64 Static MinSizeRel MD",
+      "inherits": [ "Paths", "Windows-Build-x64", "Static", "MinSizeRel", "MD" ]
+    },
+    {
+      "name": "Windows-x64-Static-MinSizeRel-MT",
+      "displayName": "Windows x64 Static MinSizeRel MT",
+      "inherits": [ "Paths", "Windows-Build-x64", "Static", "MinSizeRel", "MT" ]
     }
   ],
   "buildPresets": [
@@ -105,28 +238,228 @@
       }
     },
     {
-      "name": "Windows-x64-Debug",
+      "name": "Windows-x86-Shared-Debug-MD",
+      "displayName": "Windows x86 Shared Debug MD",
       "inherits": [ "Windows-Only" ],
-      "configurePreset": "Windows-x64-Debug",
+      "configurePreset": "Windows-x86-Shared-Debug-MD",
       "configuration": "Debug"
     },
     {
-      "name": "Windows-x64-Release",
+      "name": "Windows-x86-Shared-Debug-MT",
+      "displayName": "Windows x86 Shared Debug MT",
       "inherits": [ "Windows-Only" ],
-      "configurePreset": "Windows-x64-Release",
-      "configuration": "Release"
-    },
-    {
-      "name": "Windows-x64-Debug-MT",
-      "inherits": [ "Windows-Only" ],
-      "configurePreset": "Windows-x64-Debug-MT",
+      "configurePreset": "Windows-x86-Shared-Debug-MT",
       "configuration": "Debug"
     },
     {
-      "name": "Windows-x64-Release-MT",
+      "name": "Windows-x86-Shared-Release-MD",
+      "displayName": "Windows x86 Shared Release MD",
       "inherits": [ "Windows-Only" ],
-      "configurePreset": "Windows-x64-Release-MT",
+      "configurePreset": "Windows-x86-Shared-Release-MD",
       "configuration": "Release"
+    },
+    {
+      "name": "Windows-x86-Shared-Release-MT",
+      "displayName": "Windows x86 Shared Release MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Shared-Release-MT",
+      "configuration": "Release"
+    },
+    {
+      "name": "Windows-x86-Shared-RelWithDebInfo-MD",
+      "displayName": "Windows x86 Shared RelWithDebInfo MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Shared-RelWithDebInfo-MD",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "Windows-x86-Shared-RelWithDebInfo-MT",
+      "displayName": "Windows x86 Shared RelWithDebInfo MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Shared-RelWithDebInfo-MT",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "Windows-x86-Shared-MinSizeRel-MD",
+      "displayName": "Windows x86 Shared MinSizeRel MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Shared-MinSizeRel-MD",
+      "configuration": "MinSizeRel"
+    },
+    {
+      "name": "Windows-x86-Shared-MinSizeRel-MT",
+      "displayName": "Windows x86 Shared MinSizeRel MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Shared-MinSizeRel-MT",
+      "configuration": "MinSizeRel"
+    },
+    {
+      "name": "Windows-x86-Static-Debug-MD",
+      "displayName": "Windows x86 Static Debug MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Static-Debug-MD",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Windows-x86-Static-Debug-MT",
+      "displayName": "Windows x86 Static Debug MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Static-Debug-MT",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Windows-x86-Static-Release-MD",
+      "displayName": "Windows x86 Static Release MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Static-Release-MD",
+      "configuration": "Release"
+    },
+    {
+      "name": "Windows-x86-Static-Release-MT",
+      "displayName": "Windows x86 Static Release MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Static-Release-MT",
+      "configuration": "Release"
+    },
+    {
+      "name": "Windows-x86-Static-RelWithDebInfo-MD",
+      "displayName": "Windows x86 Static RelWithDebInfo MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Static-RelWithDebInfo-MD",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "Windows-x86-Static-RelWithDebInfo-MT",
+      "displayName": "Windows x86 Static RelWithDebInfo MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Static-RelWithDebInfo-MT",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "Windows-x86-Static-MinSizeRel-MD",
+      "displayName": "Windows x86 Static MinSizeRel MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Static-MinSizeRel-MD",
+      "configuration": "MinSizeRel"
+    },
+    {
+      "name": "Windows-x86-Static-MinSizeRel-MT",
+      "displayName": "Windows x86 Static MinSizeRel MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x86-Static-MinSizeRel-MT",
+      "configuration": "MinSizeRel"
+    },
+    {
+      "name": "Windows-x64-Shared-Debug-MD",
+      "displayName": "Windows x64 Shared Debug MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Shared-Debug-MD",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Windows-x64-Shared-Debug-MT",
+      "displayName": "Windows x64 Shared Debug MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Shared-Debug-MT",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Windows-x64-Shared-Release-MD",
+      "displayName": "Windows x64 Shared Release MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Shared-Release-MD",
+      "configuration": "Release"
+    },
+    {
+      "name": "Windows-x64-Shared-Release-MT",
+      "displayName": "Windows x64 Shared Release MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Shared-Release-MT",
+      "configuration": "Release"
+    },
+    {
+      "name": "Windows-x64-Shared-RelWithDebInfo-MD",
+      "displayName": "Windows x64 Shared RelWithDebInfo MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Shared-RelWithDebInfo-MD",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "Windows-x64-Shared-RelWithDebInfo-MT",
+      "displayName": "Windows x64 Shared RelWithDebInfo MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Shared-RelWithDebInfo-MT",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "Windows-x64-Shared-MinSizeRel-MD",
+      "displayName": "Windows x64 Shared MinSizeRel MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Shared-MinSizeRel-MD",
+      "configuration": "MinSizeRel"
+    },
+    {
+      "name": "Windows-x64-Shared-MinSizeRel-MT",
+      "displayName": "Windows x64 Shared MinSizeRel MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Shared-MinSizeRel-MT",
+      "configuration": "MinSizeRel"
+    },
+    {
+      "name": "Windows-x64-Static-Debug-MD",
+      "displayName": "Windows x64 Static Debug MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Static-Debug-MD",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Windows-x64-Static-Debug-MT",
+      "displayName": "Windows x64 Static Debug MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Static-Debug-MT",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Windows-x64-Static-Release-MD",
+      "displayName": "Windows x64 Static Release MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Static-Release-MD",
+      "configuration": "Release"
+    },
+    {
+      "name": "Windows-x64-Static-Release-MT",
+      "displayName": "Windows x64 Static Release MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Static-Release-MT",
+      "configuration": "Release"
+    },
+    {
+      "name": "Windows-x64-Static-RelWithDebInfo-MD",
+      "displayName": "Windows x64 Static RelWithDebInfo MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Static-RelWithDebInfo-MD",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "Windows-x64-Static-RelWithDebInfo-MT",
+      "displayName": "Windows x64 Static RelWithDebInfo MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Static-RelWithDebInfo-MT",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "Windows-x64-Static-MinSizeRel-MD",
+      "displayName": "Windows x64 Static MinSizeRel MD",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Static-MinSizeRel-MD",
+      "configuration": "MinSizeRel"
+    },
+    {
+      "name": "Windows-x64-Static-MinSizeRel-MT",
+      "displayName": "Windows x64 Static MinSizeRel MT",
+      "inherits": [ "Windows-Only" ],
+      "configurePreset": "Windows-x64-Static-MinSizeRel-MT",
+      "configuration": "MinSizeRel"
     }
   ]
 }

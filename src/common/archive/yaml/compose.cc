@@ -1,540 +1,358 @@
 /**
  * @file compose.cc
- * @brief YAML 이벤트 → 표현(Node) 트리 조립기(Compose) 구현.
- *
- * 스칼라 디코더들은 문법이 이미 검증한 구간을 받으므로 형식 오류를
- * 다시 진단하지 않고 값 복원에만 집중한다. 접힘(folding) 규칙:
- * 원시 줄바꿈 1개는 공백으로, 연속 k+1개(빈 줄 k개)는 줄바꿈 k개로
- * 접히고, 줄 경계의 원시 공백은 제거된다(이스케이프된 공백은 보존).
+ * @brief YAML serialization tree를 representation으로 Compose한다.
  */
-#include "common/archive/yaml/compose.h"
+#include "archive/yaml/compose.h"
 
-#include <cstddef>
 #include <map>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "common/util/unicode.h"
+#include "common/util/base64.h"
 
 namespace bedrock::archive::yaml {
-
 namespace {
 
-using transcriber::Node;
-using util::AppendUtf8;
-using util::EncodeUtf8;
-
-/** @brief 줄 나눔(CRLF|CR|LF)의 길이. 아니면 0. */
-std::size_t BreakLen(std::span<const std::uint32_t> cps, std::size_t i) {
-  if (i >= cps.size()) {
-    return 0;
-  }
-  if (cps[i] == '\r') {
-    return (i + 1 < cps.size() && cps[i + 1] == '\n') ? 2 : 1;
-  }
-  return cps[i] == '\n' ? 1 : 0;
-}
-
-/** @brief 공백류(스페이스/탭)인지. */
-bool IsWhite(std::uint32_t c) { return c == ' ' || c == '\t'; }
-
-/** @brief 원문 한 행 — 본문 구간과 뒤따르는 줄 나눔 존재 여부. */
-struct RawLine {
-  std::span<const std::uint32_t> text;
-  bool had_break;
-};
-
-/** @brief 구간을 행 단위로 분할한다(줄 나눔은 본문에서 제외). */
-std::vector<RawLine> SplitLines(std::span<const std::uint32_t> cps) {
-  std::vector<RawLine> lines;
-  std::size_t start = 0;
-  std::size_t i = 0;
-  while (i < cps.size()) {
-    const std::size_t b = BreakLen(cps, i);
-    if (b) {
-      lines.push_back({cps.subspan(start, i - start), true});
-      i += b;
-      start = i;
-    } else {
-      i++;
-    }
-  }
-  lines.push_back({cps.subspan(start), false});
-  return lines;
-}
-
-/** @brief 앞뒤 공백류를 잘라낸 구간(선두는 strip_lead일 때만). */
-std::span<const std::uint32_t> Trim(std::span<const std::uint32_t> s,
-                                    bool strip_lead) {
-  std::size_t b = 0;
-  std::size_t e = s.size();
-  if (strip_lead) {
-    while (b < e && IsWhite(s[b])) {
-      b++;
-    }
-  }
-  while (e > b && IsWhite(s[e - 1])) {
-    e--;
-  }
-  return s.subspan(b, e - b);
-}
-
 /**
- * @brief plain/홑따옴표 스칼라 디코드 — 접힘 + (홑따옴표) '' 축약.
+ * @brief 노드에 붙은 태그가 노드 종류·값 형식과 적합한지 검증한다.
  *
- * 행별로 경계 공백을 제거한 뒤 접는다: 내용 행 사이 빈 행 k개는 \n k개,
- * 빈 행이 없으면 공백 하나.
+ * 컬렉션(sequence/mapping)에 스칼라 전용 표준 태그(!!int, !!float,
+ * !!bool, !!str, !!binary 등)가 붙으면 representation 규칙 위반이다.
+ * !!binary 스칼라는 base64(RFC 4648)로 디코드 가능해야 한다.
  */
-std::string DecodeFlowFolded(std::span<const std::uint32_t> cps,
-                             bool single_quoted) {
-  const std::vector<RawLine> lines = SplitLines(cps);
-  std::string out;
-  auto append_line = [&](std::span<const std::uint32_t> l) {
-    for (std::size_t i = 0; i < l.size();) {
-      if (single_quoted && l[i] == '\'' && i + 1 < l.size() &&
-          l[i + 1] == '\'') {
-        out += '\'';
-        i += 2;
-        continue;
+bool ValidateNodeTag(const SerializationNode& serialized, std::string& error) {
+  static const char* const kScalarOnlyTags[] = {
+      "!!int", "!!float", "!!bool", "!!str", "!!binary", "!!timestamp"};
+  if (serialized.kind != SerializationNode::Kind::kScalar) {
+    for (const char* scalar_only_tag : kScalarOnlyTags) {
+      if (serialized.tag == scalar_only_tag) {
+        error = std::string("tag ") + scalar_only_tag +
+                " is not allowed on a collection";
+        return false;
       }
-      AppendUtf8(out, static_cast<char32_t>(l[i]));
-      i++;
     }
-  };
-  bool first = true;
-  std::size_t pending_empties = 0;
-  for (std::size_t li = 0; li < lines.size(); li++) {
-    const std::span<const std::uint32_t> l = Trim(lines[li].text, !first);
-    if (first) {
-      append_line(l);
-      first = false;
-      continue;
-    }
-    if (l.empty()) {
-      pending_empties++;
-      continue;
-    }
-    if (pending_empties) {
-      out.append(pending_empties, '\n');
-      pending_empties = 0;
-    } else {
-      out += ' ';
-    }
-    append_line(l);
+    return true;
   }
-  return out;  // 구간은 내용으로 끝나므로 후행 빈 행은 없다
-}
-
-/** @brief 겹따옴표 디코드의 중간 조각 — 이스케이프 여부를 함께 기억. */
-struct Piece {
-  char32_t cp;
-  bool escaped;
-};
-
-/** @brief 이스케이프된 줄바꿈(조인) 마커 — 유효 코드포인트 밖의 값. */
-constexpr char32_t kJoinMarker = 0x7FFFFFFF;
-
-/** @brief 16진 이스케이프(xNN/uNNNN/UNNNNNNNN)의 값을 읽는다. */
-char32_t ReadHex(std::span<const std::uint32_t> cps, std::size_t i,
-                 std::size_t digits) {
-  std::uint32_t v = 0;
-  for (std::size_t k = 0; k < digits && i + k < cps.size(); k++) {
-    const std::uint32_t c = cps[i + k];
-    std::uint32_t d = 0;
-    if ('0' <= c && c <= '9') {
-      d = c - '0';
-    } else if ('A' <= c && c <= 'F') {
-      d = c - 'A' + 10;
-    } else if ('a' <= c && c <= 'f') {
-      d = c - 'a' + 10;
+  if (serialized.tag == "!!binary") {
+    std::vector<std::uint8_t> decoded;
+    if (!util::Base64Decode(serialized.scalar, decoded)) {
+      error = "!!binary scalar is not valid base64: " + serialized.scalar;
+      return false;
     }
-    v = (v << 4) | d;
   }
-  return static_cast<char32_t>(v);
+  return true;
 }
 
 /**
- * @brief 겹따옴표 스칼라 디코드 — 전체 이스케이프 집합([42]~[62]) 해석
- * 후 접힘. 이스케이프된 줄바꿈은 아무것도 내지 않고(조인), 뒤따르는
- * 빈 행들은 각각 줄바꿈이 된다.
- */
-std::string DecodeDouble(std::span<const std::uint32_t> cps) {
-  // 1단계: 이스케이프 해석 — 원시/이스케이프 구분을 남긴다
-  // (원시 줄바꿈은 CRLF 포함 모두 단일 '\n' 조각으로 정규화)
-  std::vector<Piece> ps;
-  ps.reserve(cps.size());
-  for (std::size_t i = 0; i < cps.size();) {
-    if (const std::size_t bl = BreakLen(cps, i)) {
-      ps.push_back({U'\n', false});
-      i += bl;
-      continue;
-    }
-    if (cps[i] != '\\') {
-      ps.push_back({static_cast<char32_t>(cps[i]), false});
-      i++;
-      continue;
-    }
-    const std::uint32_t c1 = i + 1 < cps.size() ? cps[i + 1] : 0;
-    if (BreakLen(cps, i + 1)) {  // 이스케이프된 줄바꿈
-      ps.push_back({kJoinMarker, true});
-      i += 1 + BreakLen(cps, i + 1);
-      continue;
-    }
-    char32_t cp = 0;
-    std::size_t len = 2;
-    switch (c1) {
-      case '0': cp = 0x00; break;
-      case 'a': cp = 0x07; break;
-      case 'b': cp = 0x08; break;
-      case 't': case '\t': cp = 0x09; break;
-      case 'n': cp = 0x0A; break;
-      case 'v': cp = 0x0B; break;
-      case 'f': cp = 0x0C; break;
-      case 'r': cp = 0x0D; break;
-      case 'e': cp = 0x1B; break;
-      case ' ': cp = 0x20; break;
-      case '"': cp = 0x22; break;
-      case '/': cp = 0x2F; break;
-      case '\\': cp = 0x5C; break;
-      case 'N': cp = 0x85; break;
-      case '_': cp = 0xA0; break;
-      case 'L': cp = 0x2028; break;
-      case 'P': cp = 0x2029; break;
-      case 'x': cp = ReadHex(cps, i + 2, 2); len = 4; break;
-      case 'u': cp = ReadHex(cps, i + 2, 4); len = 6; break;
-      case 'U': cp = ReadHex(cps, i + 2, 8); len = 10; break;
-      default: cp = static_cast<char32_t>(c1); break;  // 문법상 도달 불가
-    }
-    ps.push_back({cp, true});
-    i += len;
-  }
-  // 2단계: 접힘 — 원시 줄바꿈/공백만 접힘 대상(이스케이프는 내용)
-  std::string out;
-  std::string line;        // 현재 행의 디코드 결과
-  std::size_t raw_ws = 0;  // line 끝의 원시 공백 바이트 수(접힘 때 제거)
-  std::size_t breaks = 0;  // 마지막 내용 이후 원시 줄바꿈 수
-  bool joined = false;     // 이스케이프된 줄바꿈을 봤는가
-  bool at_line_start = false;
-  auto flush_sep = [&] {
-    if (breaks == 0) {
-      return;
-    }
-    if (joined) {
-      out.append(breaks, '\n');  // 조인 뒤의 빈 행들은 각각 줄바꿈
-    } else if (breaks == 1) {
-      out += ' ';
-    } else {
-      out.append(breaks - 1, '\n');
-    }
-    breaks = 0;
-    joined = false;
-  };
-  for (const Piece& p : ps) {
-    const bool raw_white =
-        !p.escaped && IsWhite(static_cast<std::uint32_t>(p.cp));
-    if (!p.escaped && p.cp == U'\n') {
-      // 원시 줄바꿈: 행 마감(원시 후행 공백 제거)
-      line.erase(line.size() - raw_ws);
-      raw_ws = 0;
-      out += line;
-      line.clear();
-      breaks++;
-      at_line_start = true;
-      continue;
-    }
-    if (p.escaped && p.cp == kJoinMarker) {
-      // 이스케이프된 줄바꿈: 앞의 공백은 내용으로 보존, 행만 마감
-      out += line;
-      line.clear();
-      raw_ws = 0;
-      joined = true;
-      at_line_start = true;
-      continue;
-    }
-    if (at_line_start && raw_white) {
-      continue;  // 행 선두 원시 공백은 들여쓰기 — 제거
-    }
-    at_line_start = false;
-    flush_sep();
-    if (raw_white) {
-      raw_ws++;
-    } else {
-      raw_ws = 0;
-    }
-    AppendUtf8(line, p.cp);
-  }
-  if (breaks || joined) {
-    flush_sep();  // 내용이 줄바꿈으로 끝난 경우(예: "a\n" → "a ")
-  }
-  out += line;
-  return out;
-}
-
-/**
- * @brief 블록 스칼라(| / >) 디코드 — 들여쓰기 제거, (폴디드) 접힘, 청킹.
+ * @brief 매핑 키의 equality를 판정한다.
  *
- * 내용 행은 들여쓰기 indent 이상이거나 공백뿐인 행이다. 그 조건을 깨는
- * 첫 행(후행 주석 등)에서 내용이 끝난다.
+ * YAML representation에서 스칼라 키는 (태그, 값 종류, 디코드된 문자열)
+ * 삼인조로 동일성을 판단한다. 컬렉션 키는 구조 전체를 재귀 비교한다.
  */
-std::string DecodeBlock(std::span<const std::uint32_t> cps,
-                        std::ptrdiff_t indent, ChompKind chomp, bool folded) {
-  const std::size_t ind =
-      indent > 0 ? static_cast<std::size_t>(indent) : std::size_t{0};
-  const std::vector<RawLine> raw = SplitLines(cps);
-  // 행 분류: 들여쓰기 제거 본문 + 내용 경계 판정
-  struct Line {
-    std::string text;  // 들여쓰기 제거 후(UTF-8)
-    bool had_break;
-  };
-  std::vector<Line> lines;
-  for (const RawLine& rl : raw) {
-    std::size_t lead = 0;
-    while (lead < rl.text.size() && rl.text[lead] == ' ') {
-      lead++;
-    }
-    const bool all_ws = lead == rl.text.size();
-    if (all_ws && rl.text.size() <= ind) {
-      lines.push_back({std::string(), rl.had_break});  // 빈 행
-      continue;
-    }
-    if (lead < ind && !all_ws) {
-      break;  // 들여쓰기 미달 내용 행 — 후행 주석/청킹 밖
-    }
-    // 내용 행(공백만이라도 indent 초과분은 내용)
-    lines.push_back({EncodeUtf8(rl.text.subspan(ind)), rl.had_break});
+bool SameKey(const transcriber::Node& left, const transcriber::Node& right) {
+  if (left.kind != right.kind || left.tag != right.tag ||
+      left.vtype != right.vtype) {
+    return false;
   }
-  // 마지막 원소가 "빈 행 + 줄바꿈 없음"이면 구간 끝의 자투리 — 내용 아님
-  if (!lines.empty() && lines.back().text.empty() && !lines.back().had_break) {
-    lines.pop_back();
+  if (left.kind == transcriber::Node::Kind::kScalar) {
+    return left.scalar == right.scalar && left.null == right.null;
   }
-  // 후행 빈 행 수(t)와 내용 행 수(k)
-  std::size_t k = lines.size();
-  while (k > 0 && lines[k - 1].text.empty()) {
-    k--;
+  if (left.items.size() != right.items.size() ||
+      left.pairs.size() != right.pairs.size()) {
+    return false;
   }
-  const std::size_t trailing = lines.size() - k;
-  std::string body;
-  if (!folded) {
-    for (std::size_t i = 0; i < k; i++) {
-      body += lines[i].text;
-      if (i + 1 < k) {
-        body += '\n';
+  for (std::size_t index = 0; index < left.items.size(); ++index) {
+    if (!SameKey(left.items[index], right.items[index])) {
+      return false;
+    }
+  }
+  for (std::size_t index = 0; index < left.pairs.size(); ++index) {
+    if (!SameKey(left.pairs[index].key, right.pairs[index].key) ||
+        !SameKey(left.pairs[index].value, right.pairs[index].value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * @brief 매핑 안에서 키가 유일한지 검증한다(YAML 1.2.2 §3.1.1).
+ *
+ * "a: 1\na: 2\n"처럼 같은 매핑에 동일 키가 두 번 나타나면
+ * representation 모델 위반이다. 다른 매핑끼리는 서로 독립이다.
+ */
+bool ValidateKeyUniqueness(const SerializationNode& mapping,
+                           std::string& error) {
+  std::vector<const SerializationNode::Pair*> seen;
+  seen.reserve(mapping.pairs.size());
+  for (const SerializationNode::Pair& pair : mapping.pairs) {
+    for (const SerializationNode::Pair* previous : seen) {
+      if (previous->key.tag == pair.key.tag &&
+          previous->key.value_type == pair.key.value_type &&
+          previous->key.scalar == pair.key.scalar &&
+          previous->key.null == pair.key.null &&
+          previous->key.kind == pair.key.kind &&
+          previous->key.items.size() == pair.key.items.size() &&
+          previous->key.pairs.size() == pair.key.pairs.size()) {
+        error = "duplicate key: " + pair.key.scalar;
+        return false;
       }
+    }
+    seen.push_back(&pair);
+  }
+  return true;
+}
+
+bool ComposeNode(const SerializationNode& serialized,
+                 std::map<std::string, transcriber::Node>& anchors,
+                 transcriber::Node& representation, bool allow_duplicate_keys,
+                 std::string& error) {
+  if (serialized.kind == SerializationNode::Kind::kAlias) {
+    const auto iterator = anchors.find(serialized.alias);
+    if (iterator == anchors.end()) {
+      error = "unresolved alias *" + serialized.alias;
+      return false;
+    }
+    representation = iterator->second;
+    return true;
+  }
+
+  representation.null = serialized.null;
+  representation.tag = serialized.tag;
+  representation.vtype = serialized.value_type;
+  representation.scalar = serialized.scalar;
+  if (serialized.kind == SerializationNode::Kind::kScalar) {
+    if (!ValidateNodeTag(serialized, error)) {
+      return false;
+    }
+    representation.kind = transcriber::Node::Kind::kScalar;
+  } else if (serialized.kind == SerializationNode::Kind::kSequence) {
+    if (!ValidateNodeTag(serialized, error)) {
+      return false;
+    }
+    representation.kind = transcriber::Node::Kind::kSequence;
+    for (const SerializationNode& item : serialized.items) {
+      transcriber::Node child;
+      if (!ComposeNode(item, anchors, child, allow_duplicate_keys, error)) {
+        return false;
+      }
+      representation.items.push_back(std::move(child));
     }
   } else {
-    // 폴디드 접힘: 보통 행끼리 이웃하면 공백, 빈 행 k개는 \n k개,
-    // 더 들여쓴(공백/탭 시작) 행 경계는 줄바꿈 그대로
-    int prev = 0;  // 0=없음, 1=보통, 2=더 들여씀
-    std::size_t pending_empties = 0;
-    for (std::size_t i = 0; i < k; i++) {
-      const std::string& t = lines[i].text;
-      if (t.empty()) {
-        pending_empties++;
-        continue;
+    if (!ValidateNodeTag(serialized, error)) {
+      return false;
+    }
+    if (!allow_duplicate_keys && !ValidateKeyUniqueness(serialized, error)) {
+      return false;
+    }
+    representation.kind = transcriber::Node::Kind::kMapping;
+    for (const SerializationNode::Pair& pair : serialized.pairs) {
+      transcriber::Node key;
+      transcriber::Node value;
+      if (!ComposeNode(pair.key, anchors, key, allow_duplicate_keys, error) ||
+          !ComposeNode(pair.value, anchors, value, allow_duplicate_keys,
+                       error)) {
+        return false;
       }
-      const int kind = (t[0] == ' ' || t[0] == '\t') ? 2 : 1;
-      if (prev != 0) {
-        if (pending_empties) {
-          body.append(pending_empties, '\n');
-        } else if (prev == 1 && kind == 1) {
-          body += ' ';
-        } else {
-          body += '\n';
-        }
-      }
-      pending_empties = 0;
-      body += t;
-      prev = kind;
+      representation.pairs.push_back({std::move(key), std::move(value)});
     }
   }
-  // 청킹
-  const bool last_had_break = k > 0 && (trailing > 0 || lines[k - 1].had_break);
-  if (chomp == ChompKind::kStrip) {
-    return body;
+  if (!serialized.anchor.empty()) {
+    anchors[serialized.anchor] = representation;
   }
-  if (chomp == ChompKind::kClip) {
-    if (!body.empty() && last_had_break) {
-      body += '\n';
-    }
-    return body;
-  }
-  // KEEP: 마지막 내용 행의 줄바꿈 + 후행 빈 행들을 전부 보존
-  if (k > 0) {
-    if (lines[k - 1].had_break || trailing > 0) {
-      body += '\n';
-    }
-  }
-  for (std::size_t i = k; i < lines.size(); i++) {
-    if (lines[i].had_break) {
-      body += '\n';
-    }
-  }
-  return body;
+  return true;
 }
-
-/** @brief 이벤트 구간의 원문을 UTF-8로 뽑는다. */
-std::string SpanText(std::span<const std::uint32_t> buf, const Event& e) {
-  return EncodeUtf8(buf.subspan(e.begin, e.end - e.begin));
-}
-
-/** @brief 조립 중인 컨테이너 하나(매핑은 키/값 교대 상태 포함). */
-struct Build {
-  Node node;
-  Node key;
-  bool has_key = false;
-  std::string anchor;
-};
 
 }  // namespace
 
-ComposeResult Compose(std::span<const std::uint32_t> buf,
-                      std::span<const Event> events) {
-  ComposeResult r;
-  std::vector<Build> stack;
-  std::map<std::string, Node> anchors;
-  std::string pend_tag;
-  std::string pend_anchor;
-  Node root;
-  bool have_root = false;
-
-  auto fail = [&r](std::string msg) {
-    r.ok = false;
-    r.error = std::move(msg);
+struct ComposeEventBuilder::Impl {
+  struct Build {
+    transcriber::Node node;
+    transcriber::Node key;
+    bool has_key = false;
+    std::string anchor;
   };
-  // 완성된 노드를 부모(컨테이너 또는 문서 루트)에 붙인다
-  auto attach = [&](Node&& n, std::string&& anchor) -> bool {
-    if (!anchor.empty()) {
-      anchors[std::move(anchor)] = n;  // 완성 시점 등록(자기 참조 배제)
-    }
+
+  explicit Impl(const ComposeOptions& compose_options)
+      : options(compose_options) {}
+
+  bool Fail(std::string message) {
+    result.error = std::move(message);
+    failed = true;
+    return false;
+  }
+
+  bool Attach(transcriber::Node&& node) {
     if (stack.empty()) {
-      root = std::move(n);
+      root = std::move(node);
       have_root = true;
       return true;
     }
-    Build& b = stack.back();
-    if (b.node.kind == Node::Kind::kSequence) {
-      b.node.items.push_back(std::move(n));
+    Build& top = stack.back();
+    if (top.node.kind == transcriber::Node::Kind::kSequence) {
+      top.node.items.push_back(std::move(node));
       return true;
     }
-    if (b.node.kind == Node::Kind::kMapping) {
-      if (!b.has_key) {
-        b.key = std::move(n);
-        b.has_key = true;
+    if (top.node.kind == transcriber::Node::Kind::kMapping) {
+      if (!top.has_key) {
+        top.key = std::move(node);
+        top.has_key = true;
       } else {
-        b.node.pairs.push_back({std::move(b.key), std::move(n)});
-        b.has_key = false;
+        top.node.pairs.push_back({std::move(top.key), std::move(node)});
+        top.has_key = false;
       }
       return true;
     }
-    return false;
-  };
+    return Fail("node has no parent");
+  }
 
-  for (const Event& e : events) {
-    switch (e.kind) {
-      case EventKind::kDocStart: {
-        have_root = false;
-        break;
+  bool ValidateKeys(const transcriber::Node& mapping) {
+    if (options.allow_duplicate_keys) {
+      return true;
+    }
+    std::vector<const transcriber::Node::Pair*> seen;
+    seen.reserve(mapping.pairs.size());
+    for (const transcriber::Node::Pair& pair : mapping.pairs) {
+      for (const transcriber::Node::Pair* previous : seen) {
+        if (previous->key.tag == pair.key.tag &&
+            previous->key.vtype == pair.key.vtype &&
+            previous->key.scalar == pair.key.scalar &&
+            previous->key.null == pair.key.null &&
+            previous->key.kind == pair.key.kind &&
+            previous->key.items.size() == pair.key.items.size() &&
+            previous->key.pairs.size() == pair.key.pairs.size()) {
+          return Fail("duplicate key: " + pair.key.scalar);
+        }
       }
-      case EventKind::kDocEnd: {
+      seen.push_back(&pair);
+    }
+    return true;
+  }
+
+  bool OnEvent(SerializationEvent&& event) {
+    switch (event.kind) {
+      case SerializationEventKind::kDocStart:
+        have_root = false;
+        return true;
+      case SerializationEventKind::kDocEnd:
         if (!stack.empty()) {
-          fail("문서 끝에서 컨테이너가 닫히지 않음");
-          return r;
+          return Fail("container remains open at document end");
         }
         if (!have_root) {
-          Node n;
-          n.null = true;
-          root = std::move(n);
+          root = transcriber::Node{};
+          root.null = true;
         }
-        r.docs.push_back(std::move(root));
-        root = Node{};
+        result.docs.push_back(std::move(root));
+        root = transcriber::Node{};
         have_root = false;
-        break;
-      }
-      case EventKind::kAnchor: {
-        pend_anchor = SpanText(buf, e);
-        break;
-      }
-      case EventKind::kTag: {
-        pend_tag = SpanText(buf, e);
-        break;
-      }
-      case EventKind::kScalar: {
-        Node n;
-        n.kind = Node::Kind::kScalar;
-        n.tag = std::move(pend_tag);
-        pend_tag.clear();
-        const std::span<const std::uint32_t> body =
-            buf.subspan(e.begin, e.end - e.begin);
-        if (e.style == ScalarStyle::kPlain) {
-          n.null = body.empty();
-          n.scalar = n.null ? std::string() : DecodeFlowFolded(body, false);
-        } else if (e.style == ScalarStyle::kSingleQuoted) {
-          n.scalar = DecodeFlowFolded(body, true);
-        } else if (e.style == ScalarStyle::kDoubleQuoted) {
-          n.scalar = DecodeDouble(body);
-        } else {
-          n.scalar = DecodeBlock(body, e.indent, e.chomp,
-                                 e.style == ScalarStyle::kFolded);
+        anchors.clear();
+        return true;
+      case SerializationEventKind::kNode: {
+        if (event.node.kind == SerializationNode::Kind::kAlias) {
+          const auto iterator = anchors.find(event.node.alias);
+          if (iterator == anchors.end()) {
+            return Fail("unresolved alias *" + event.node.alias);
+          }
+          transcriber::Node alias = iterator->second;
+          return Attach(std::move(alias));
         }
-        std::string anchor = std::move(pend_anchor);
-        pend_anchor.clear();
-        if (!attach(std::move(n), std::move(anchor))) {
-          fail("스칼라를 붙일 컨테이너가 없음");
-          return r;
+        if (!ValidateNodeTag(event.node, result.error)) {
+          failed = true;
+          return false;
         }
-        break;
-      }
-      case EventKind::kAlias: {
-        const std::string name = SpanText(buf, e);
-        const auto it = anchors.find(name);
-        if (it == anchors.end()) {
-          fail("미해소 별칭 *" + name);
-          return r;
+        transcriber::Node representation;
+        representation.kind = transcriber::Node::Kind::kScalar;
+        representation.null = event.node.null;
+        representation.tag = std::move(event.node.tag);
+        representation.vtype = event.node.value_type;
+        representation.scalar = std::move(event.node.scalar);
+        if (!event.node.anchor.empty()) {
+          anchors[event.node.anchor] = representation;
         }
-        Node copy = it->second;  // 값 복사로 해소(순환 자연 배제)
-        if (!attach(std::move(copy), std::string())) {
-          fail("별칭을 붙일 컨테이너가 없음");
-          return r;
+        return Attach(std::move(representation));
+      }
+      case SerializationEventKind::kMapStart:
+      case SerializationEventKind::kSeqStart: {
+        if (!ValidateNodeTag(event.node, result.error)) {
+          failed = true;
+          return false;
         }
-        break;
+        Build build;
+        build.node.kind = event.kind == SerializationEventKind::kMapStart
+                              ? transcriber::Node::Kind::kMapping
+                              : transcriber::Node::Kind::kSequence;
+        build.node.tag = std::move(event.node.tag);
+        build.anchor = std::move(event.node.anchor);
+        stack.push_back(std::move(build));
+        return true;
       }
-      case EventKind::kMapStart:
-      case EventKind::kSeqStart: {
-        Build b;
-        b.node.kind = e.kind == EventKind::kMapStart ? Node::Kind::kMapping
-                                                     : Node::Kind::kSequence;
-        b.node.tag = std::move(pend_tag);
-        pend_tag.clear();
-        b.anchor = std::move(pend_anchor);
-        pend_anchor.clear();
-        stack.push_back(std::move(b));
-        break;
-      }
-      case EventKind::kMapEnd:
-      case EventKind::kSeqEnd: {
+      case SerializationEventKind::kMapEnd:
+      case SerializationEventKind::kSeqEnd: {
         if (stack.empty()) {
-          fail("여는 이벤트 없이 컨테이너가 닫힘");
-          return r;
+          return Fail("container closes without a matching start");
         }
-        Build b = std::move(stack.back());
+        Build build = std::move(stack.back());
         stack.pop_back();
-        if (b.has_key) {
-          fail("매핑의 키에 대응하는 값이 없음");
-          return r;
+        if (build.has_key) {
+          return Fail("mapping key has no value");
         }
-        if (!attach(std::move(b.node), std::move(b.anchor))) {
-          fail("컨테이너를 붙일 부모가 없음");
-          return r;
+        if (build.node.kind == transcriber::Node::Kind::kMapping &&
+            !ValidateKeys(build.node)) {
+          return false;
         }
-        break;
+        if (!build.anchor.empty()) {
+          anchors[build.anchor] = build.node;
+        }
+        return Attach(std::move(build.node));
       }
     }
+    return Fail("unknown serialization event");
   }
-  if (!stack.empty()) {
-    fail("스트림 끝에서 컨테이너가 닫히지 않음");
-    return r;
+
+  ComposeOptions options;
+  ComposeResult result;
+  std::map<std::string, transcriber::Node> anchors;
+  std::vector<Build> stack;
+  transcriber::Node root;
+  bool have_root = false;
+  bool failed = false;
+};
+
+ComposeEventBuilder::ComposeEventBuilder(const ComposeOptions& options)
+    : impl_(new Impl(options)) {}
+
+ComposeEventBuilder::~ComposeEventBuilder() { delete impl_; }
+
+bool ComposeEventBuilder::OnEvent(SerializationEvent&& event) {
+  return impl_->OnEvent(std::move(event));
+}
+
+ComposeResult ComposeEventBuilder::Finish() {
+  if (!impl_->failed && !impl_->stack.empty()) {
+    impl_->Fail("container remains open at stream end");
   }
-  r.ok = true;
-  return r;
+  if (!impl_->failed) {
+    impl_->result.ok = true;
+  }
+  return std::move(impl_->result);
+}
+
+ComposeResult Compose(const SerializationStream& serialization,
+                      const ComposeOptions& options) {
+  ComposeResult result;
+  std::map<std::string, transcriber::Node> anchors;
+  for (const SerializationNode& document : serialization.documents) {
+    transcriber::Node representation;
+    if (!ComposeNode(document, anchors, representation,
+                     options.allow_duplicate_keys, result.error)) {
+      return result;
+    }
+    result.docs.push_back(std::move(representation));
+    anchors.clear();
+  }
+  result.ok = true;
+  return result;
 }
 
 }  // namespace bedrock::archive::yaml

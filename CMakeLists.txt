@@ -8,11 +8,13 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/policy.cmake")
 # Project
 # ============================================================
 if(NOT DEFINED ROOT_PROJECT_NAME)
-    set(ROOT_PROJECT_NAME "Root")
+    set(ROOT_PROJECT_NAME "Bedrock")
 endif()
 
 set(SUB_PROJECT_NAME "Common")
 project(${SUB_PROJECT_NAME} LANGUAGES CXX)
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/header_layout.cmake")
 
 set(CMAKE_CXX_STANDARD             23)
 set(CMAKE_CXX_STANDARD_REQUIRED    ON)
@@ -27,11 +29,28 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS  ON)
 include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/architecture.cmake")
 
 # ============================================================
-# Linkage option (cross-platform abstraction of MT/MD)
+# Linkage – libc detection, license guard
 # ============================================================
-# DYNAMIC: 결과물 SHARED + 시스템 런타임 동적 (Win=MD, Linux=.so + libstdc++.so)
-# STATIC : 결과물 STATIC + 시스템 런타임 정적 (Win=MT, Linux=musl만 허용)
 include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/linkage.cmake")
+
+# ============================================================
+# Target – Common
+# ============================================================
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cc")
+
+if(BUILD_SHARED_LIBS MATCHES "ON")
+    add_library(${SUB_PROJECT_NAME} SHARED ${SOURCES})
+else()
+    add_library(${SUB_PROJECT_NAME} STATIC ${SOURCES})
+endif()
+
+target_include_directories(${SUB_PROJECT_NAME}
+    PUBLIC "${COMMON_EXTERNAL_INCLUDE_DIR}"
+    PRIVATE "${COMMON_INTERNAL_INCLUDE_DIR}")
+common_verify_header_visibility(${SUB_PROJECT_NAME})
+
+# Alias for parent projects
+add_library(${ROOT_PROJECT_NAME}::${SUB_PROJECT_NAME} ALIAS ${SUB_PROJECT_NAME})
 
 # ============================================================
 # GoogleTest (테스트 전용 — 최상위 빌드에서만)
@@ -41,41 +60,13 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/linkage.cmake")
 # 선언해 테스트 TU에서 gtest 헤더가 시스템 헤더(-isystem)로 취급되게
 # 합니다.
 if(PROJECT_IS_TOP_LEVEL)
-    include(FetchContent)
-    FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.14.0
-        GIT_SHALLOW    TRUE
-        SYSTEM
-    )
-    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
-    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-    # MSVC: 런타임을 소비자와 일치(DLL CRT)시켜 링크 충돌 방지
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(googletest)
-    if(NOT WIN32)
-        # 라이브러리/테스트 TU와 예외·RTTI 모드를 일치시킨다
-        target_compile_options(gtest PRIVATE -fno-exceptions -fno-rtti)
-        target_compile_options(gtest_main PRIVATE -fno-exceptions -fno-rtti)
-    endif()
+    set(BUILD_TESTING ON)
+
+    include(CTest)
+    enable_testing()
+
+    add_subdirectory(test)
 endif()
-
-# ============================================================
-# Target – Common
-# ============================================================
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cc")
-
-if(ENCRYPTION_LINKAGE MATCHES "DYNAMIC")
-    add_library(${SUB_PROJECT_NAME} SHARED ${SOURCES})
-else()
-    add_library(${SUB_PROJECT_NAME} STATIC ${SOURCES})
-endif()
-
-target_include_directories(${SUB_PROJECT_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-
-# Alias for parent projects
-add_library(${ROOT_PROJECT_NAME}::${SUB_PROJECT_NAME} ALIAS ${SUB_PROJECT_NAME})
 
 # Compiler options
 include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/compiler_options.cmake")
@@ -88,7 +79,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/isa_features.cmake")
 # ============================================================
 # symlink는 Windows에서 관리자 권한이 필요하므로 copy_if_different로 처리.
 #
-# CMake 단계 순서(configure → generate) 때문에 단일 cmake 호출로는 자기 generate
+# CMake 단계 순서(configure -> generate) 때문에 단일 cmake 호출로는 자기 generate
 # 결과를 만지지 못합니다. 이중 안전망으로 처리:
 #   (1) configure 시점 execute_process: 이전 configure가 남긴 compile_commands.json이
 #       있으면 즉시 copy. 첫 configure에는 source가 없어 silent fail (정상).
@@ -106,12 +97,11 @@ if (PROJECT_IS_TOP_LEVEL AND CMAKE_EXPORT_COMPILE_COMMANDS)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${CMAKE_BINARY_DIR}/compile_commands.json
                 ${CMAKE_BINARY_DIR}/../compile_commands.json
-        COMMENT "Copying compile_commands.json to project root"
+        COMMENT "Copying compile_commands.json to output"
         VERBATIM
     )
 endif()
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/post_build.cmake")
-
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/cmake_include/bedrock_common_config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/bedrock_common_config.h" @ONLY)
-target_include_directories(${SUB_PROJECT_NAME} SYSTEM PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
+target_include_directories(${SUB_PROJECT_NAME} SYSTEM PUBLIC
+    "${CMAKE_CURRENT_BINARY_DIR}")

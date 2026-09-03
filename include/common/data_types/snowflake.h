@@ -22,18 +22,21 @@ struct Snowflake {
   /** @brief 타임스탬프(41비트). */
   std::uint64_t timestamp : 41;
   /** @brief 부호 비트(항상 0). */
-  std::uint64_t sign : 1;
+  std::uint64_t sign : 1 = 0;
 
   /**
    * @brief 64비트 값으로부터 각 필드를 분해해 Snowflake를 생성한다.
-   * @param v 필드들을 비트 단위로 담고 있는 64비트 값.
+   * @param value 필드들을 비트 단위로 담고 있는 64비트 값.
    */
-  Snowflake(std::uint64_t v)
-      : sequence(v & 0xFFF),                   // 12비트
-        thread_id((v >> 12) & 0x7F),           // 7비트
-        machine_id((v >> 19) & 0x7),           // 3비트
-        timestamp((v >> 22) & 0x1FFFFFFFFFF),  // 41비트
-        sign((v >> 63) & 0x1) {}
+  explicit Snowflake(std::uint64_t value)
+      : sequence(value & 0xFFF),                    // 12비트
+        thread_id((value >> 12) & 0x7F),            // 7비트
+        machine_id((value >> 19) & 0x7),            // 3비트
+        timestamp((value >> 22) & 0x1FFFFFFFFFF) {  // 41비트
+    if ((value & (std::uint64_t{1} << 63)) != 0) {
+      sign = 1;
+    }
+  }
 
   /**
    * @brief 각 필드를 비트로 합쳐 64비트 정수로 변환한다.
@@ -81,8 +84,8 @@ struct hash<bedrock::Snowflake> {
   /**
    * @brief Snowflake를 64비트 정수로 변환해 해시값을 계산한다.
    */
-  size_t operator()(const bedrock::Snowflake& s) const noexcept {
-    return std::hash<std::uint64_t>{}(static_cast<std::uint64_t>(s));
+  size_t operator()(const bedrock::Snowflake& snowflake) const noexcept {
+    return std::hash<std::uint64_t>{}(static_cast<std::uint64_t>(snowflake));
   }
 };
 }  // namespace std

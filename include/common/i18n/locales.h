@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 
 /**
@@ -23,7 +24,7 @@ namespace bedrock::locale {
  *
  * GetI18nString() 호출 시 원하는 문자열을 이 값으로 지정한다.
  */
-enum class StringKey {
+enum class StringKey : std::uint8_t {
   /** @brief 성공. */
   kStatusSuccess,
   /** @brief 대상이 없음(엔트리 없음). */
@@ -54,7 +55,7 @@ enum class StringKey {
  * @note TBD: 현재 테이블 데이터는 language::ko 뿐이라, 한국어(kKO)가
  * 아니면 폴백을 포함해 조회에 실패해 빈 문자열이 반환된다.
  */
-std::string_view GetI18nString(const StringKey& key, const ISO639_1& language,
-                               const ISO3166_1& country);
+std::string_view GetI18nString(const StringKey& key, const IsO6391& language,
+                               const IsO31661& country);
 
 }  // namespace bedrock::locale

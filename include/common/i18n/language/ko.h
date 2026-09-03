@@ -8,9 +8,9 @@
 #pragma once
 #include <string_view>
 
-namespace bedrock::locale::language::ko {
 
-namespace status {
+
+namespace bedrock::locale::language::ko::status {
 /** @brief 성공. */
 inline constexpr std::string_view kSuccess = "성공.";
 /** @brief 대상이 없음. */
@@ -28,6 +28,6 @@ inline constexpr std::string_view kCorruptedData =
  */
 inline constexpr std::string_view kCorruptedWhileParsing =
     "{}를 파싱하는 동안 데이터 손상이 감지되었습니다.";
-}  // namespace status
+} // namespace bedrock::locale::language::ko::status
 
-}  // namespace bedrock::locale::language::ko
+

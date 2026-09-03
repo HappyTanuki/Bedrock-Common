@@ -10,9 +10,16 @@
 # ============================================================
 
 if (TARGET ${SUB_PROJECT_NAME})
+    # ============================================================
+    # PCH
+    # ============================================================
     target_precompile_headers(${SUB_PROJECT_NAME} PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/common/pch.h"
+        "${COMMON_INTERNAL_INCLUDE_DIR}/pch.h"
     )
+
+    # ============================================================
+    # MSVC compiler options
+    # ============================================================
     if(MSVC)
         target_compile_options(${SUB_PROJECT_NAME} PRIVATE
         /MP
@@ -20,16 +27,19 @@ if (TARGET ${SUB_PROJECT_NAME})
         /W4              # 합리적인 모든 경고
         /WX              # 경고를 에러로 (Linux의 -Werror)
         /permissive-     # 표준 엄격 모드 (Microsoft 확장 거부)
+        /Zc:__cplusplus  # __cplusplus 매크로 정확히 보고
+        /Zc:preprocessor # 표준 준수 전처리기
         /w14242 /w14254 /w14263 /w14265 /w14287 /we4289
         /w14296 /w14311 /w14545 /w14546 /w14547 /w14549
         /w14555 /w14619 /w14640 /w14826 /w14905 /w14906
         /w14928
-        /Zc:__cplusplus  # __cplusplus 매크로 정확히 보고
-        /Zc:preprocessor # 표준 준수 전처리기
         )
     endif()
 endif()
 
+# ============================================================
+# RPATH
+# ============================================================
 if(UNIX AND NOT APPLE AND CMAKE_BUILD_TYPE STREQUAL "Release")
     set_target_properties(${SUB_PROJECT_NAME} PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
@@ -47,15 +57,19 @@ if(NOT TARGET CommonLinkOptions)
     add_library(CommonLinkOptions INTERFACE)
 endif()
 
-if(NOT WIN32 AND COMMON_LINKAGE STREQUAL "STATIC")
+if(NOT WIN32 AND NOT BUILD_SHARED_LIBS)
     if(COMMON_LIBC STREQUAL "musl")
         # musl: full-static OK
-        target_link_options(CommonLinkOptions INTERFACE -static)
+        target_link_options(CommonLinkOptions INTERFACE
+            -static
+        )
         message(STATUS "Common linkage: STATIC (musl, full-static)")
     else()
         # 도달 시점은 COMMON_LIBC == "other" 등 (glibc는 위에서 FATAL_ERROR)
         target_link_options(CommonLinkOptions INTERFACE
-            -static-libgcc -static-libstdc++)
+            -static-libgcc
+            -static-libstdc++
+        )
         message(STATUS "Common linkage: STATIC (libc=${COMMON_LIBC}, runtime static)")
     endif()
 endif()
@@ -73,28 +87,16 @@ if (NOT WIN32)
     # 전역에는 ISA 플래그를 걸지 않습니다(위 주석 참고). 예외/RTTI 비활성만 유지.
     target_compile_options(
         ${SUB_PROJECT_NAME} PRIVATE
-        -fno-exceptions -fno-rtti
+        -fno-exceptions
+        -fno-rtti
     )
-else()
-    add_compile_options(/utf-8)
 endif()
 
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    add_compile_options(-Wuseless-cast)
-elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    add_compile_options(
-        -Weverything
-        -Wno-c++98-compat
-        -Wno-c++98-compat-pedantic
-        -Wno-unused-macros
-        -Wno-padded
-    )
-endif ()
-
-if(WIN32)
-    set_target_properties(${SUB_PROJECT_NAME} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-else()
-    add_compile_options(
+# ============================================================
+# GCC / Clang Warning Options
+# ============================================================
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(${SUB_PROJECT_NAME} PRIVATE
         -Werror
         -Wall
         -Wextra
@@ -110,5 +112,25 @@ else()
         -Wformat=2
         -Wcast-qual
         -Wcast-align
+        -Wuseless-cast
+    )
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(${SUB_PROJECT_NAME} PRIVATE
+        -Werror
+        -Weverything
+        # -Weverything에서 의도적으로 제외
+        -Wno-c++98-compat
+        -Wno-c++98-compat-pedantic
+        -Wno-unused-macros
+        -Wno-padded
+    )
+endif()
+
+# ============================================================
+# Windows DLL export
+# ============================================================
+if (WIN32)
+    set_target_properties(${SUB_PROJECT_NAME} PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
     )
 endif()
