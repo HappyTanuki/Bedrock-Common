@@ -3,53 +3,50 @@
  * @brief TranscriberError의 std::error_category 구현과 Deserializer/
  *        Serializer의 소멸자 정의.
  */
-#include "common/archive/transciber.h"
+#include "archive/transcriber.h"
+
 #include "common/i18n/locales.h"
 
 namespace bedrock::archive::transcriber {
 
 const std::error_category& TranscriberCategory() noexcept {
   static const struct Cat final : std::error_category {
-    const char* name() const noexcept override {
+    [[nodiscard]] const char* name() const noexcept override {
       return "bedrock.archive.transcriber";
     }
-    std::string message(int v) const override {
+    [[nodiscard]] std::string message(int error_value) const override {
       std::string err_msg;
-      switch (static_cast<TranscriberError>(v)) {
+      switch (static_cast<TranscriberError>(error_value)) {
         case TranscriberError::kSuccess: {
-          err_msg =
-              GetI18nString(locale::StringKey::kStatusSuccess,
-                            locale::ISO639_1::kKO, locale::ISO3166_1::kKR);
+          err_msg = GetI18nString(locale::StringKey::kStatusSuccess,
+                                  locale::IsO6391::kKO, locale::IsO31661::kKR);
           break;
         }
         case TranscriberError::kNoENT:
-          err_msg =
-              GetI18nString(locale::StringKey::kStatusNoEnt,
-                            locale::ISO639_1::kKO, locale::ISO3166_1::kKR);
+          err_msg = GetI18nString(locale::StringKey::kStatusNoEnt,
+                                  locale::IsO6391::kKO, locale::IsO31661::kKR);
           break;
         case TranscriberError::kNullStream:
-          err_msg =
-              GetI18nString(locale::StringKey::kStatusNullStream,
-                            locale::ISO639_1::kKO, locale::ISO3166_1::kKR);
+          err_msg = GetI18nString(locale::StringKey::kStatusNullStream,
+                                  locale::IsO6391::kKO, locale::IsO31661::kKR);
           break;
         case TranscriberError::kError:
-          err_msg =
-              GetI18nString(locale::StringKey::kStatusError,
-                            locale::ISO639_1::kKO, locale::ISO3166_1::kKR);
+          err_msg = GetI18nString(locale::StringKey::kStatusError,
+                                  locale::IsO6391::kKO, locale::IsO31661::kKR);
           break;
         default:
           return "Unknown Error.";
       }
       return err_msg;
     }
-  } instance;
-  return instance;
+  } kInstance;
+  return kInstance;
 }
-std::error_code make_error_code(TranscriberError e) noexcept {
-  return {static_cast<int>(e), TranscriberCategory()};
+std::error_code make_error_code(TranscriberError error) noexcept {
+  return {static_cast<int>(error), TranscriberCategory()};
 }
 
-Deserializer::~Deserializer() = default;
-Serializer::~Serializer() = default;
+ConstructCore::~ConstructCore() = default;
+RepresentCore::~RepresentCore() = default;
 
 }  // namespace bedrock::archive::transcriber

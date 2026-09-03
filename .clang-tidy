@@ -1,0 +1,95 @@
+---
+# 빡센 Google 스타일 + readability/modernize/performance/bugprone 체크.
+# IDE(.clangd)와 CLI(clang-tidy)에서 동일 적용.
+# Fix는 자동 안 함 — 식별자 rename은 ABI/API에 영향이 커서 사용자가 검토 후 의도적 적용.
+
+Checks: >
+  google-*,
+  readability-identifier-naming,
+  readability-*,
+  modernize-*,
+  performance-*,
+  bugprone-*,
+  cppcoreguidelines-*,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity,
+  -google-readability-todo,
+  -bugprone-easily-swappable-parameters
+
+# 경고는 에러로 승격시키지 않음 — 일단 검출만.
+WarningsAsErrors: ''
+
+# 모든 헤더를 검사하되 빌드 생성물과 외부 의존성만 제외한다.
+HeaderFilterRegex: '.*'
+
+# 이름 컨벤션은 Google C++ Style Guide 기반.
+# https://google.github.io/styleguide/cppguide.html#Naming
+CheckOptions:
+  # 클래스/구조체/타입 — CamelCase (PascalCase)
+  - { key: readability-identifier-naming.ClassCase,            value: CamelCase }
+  - { key: readability-identifier-naming.StructCase,           value: CamelCase }
+  - { key: readability-identifier-naming.TypedefCase,          value: CamelCase }
+  - { key: readability-identifier-naming.TypeAliasCase,        value: CamelCase }
+  - { key: readability-identifier-naming.UnionCase,            value: CamelCase }
+
+  # 함수 — CamelCase (Google: 자유함수/메서드 모두 PascalCase)
+  - { key: readability-identifier-naming.FunctionCase,         value: CamelCase }
+  - { key: readability-identifier-naming.FunctionIgnoredRegexp, value: '^make_error_code$' }
+  - { key: readability-identifier-naming.MethodCase,           value: CamelCase }
+  - { key: readability-identifier-naming.ClassMethodCase,      value: CamelCase }
+  - { key: readability-identifier-naming.VirtualMethodCase,    value: CamelCase }
+
+  # 변수/매개변수 — snake_case
+  - { key: readability-identifier-naming.VariableCase,         value: lower_case }
+  - { key: readability-identifier-naming.LocalVariableCase,    value: lower_case }
+  - { key: readability-identifier-naming.ParameterCase,        value: lower_case }
+
+  # 멤버 — Google: private/protected에 trailing _
+  - { key: readability-identifier-naming.PublicMemberCase,     value: lower_case }
+  - { key: readability-identifier-naming.PrivateMemberCase,    value: lower_case }
+  - { key: readability-identifier-naming.PrivateMemberSuffix,  value: _ }
+  - { key: readability-identifier-naming.ProtectedMemberCase,  value: lower_case }
+  - { key: readability-identifier-naming.ProtectedMemberSuffix, value: _ }
+
+  # 상수 — k 접두사 + CamelCase
+  - { key: readability-identifier-naming.ConstexprVariableCase, value: CamelCase }
+  - { key: readability-identifier-naming.ConstexprVariablePrefix, value: k }
+  - { key: readability-identifier-naming.GlobalConstantCase,   value: CamelCase }
+  - { key: readability-identifier-naming.GlobalConstantPrefix, value: k }
+  - { key: readability-identifier-naming.StaticConstantCase,   value: CamelCase }
+  - { key: readability-identifier-naming.StaticConstantPrefix, value: k }
+  - { key: readability-identifier-naming.ClassConstantCase,    value: CamelCase }
+  - { key: readability-identifier-naming.ClassConstantPrefix,  value: k }
+
+  # Enum — Class는 CamelCase, value는 kCamelCase
+  - { key: readability-identifier-naming.EnumCase,             value: CamelCase }
+  - { key: readability-identifier-naming.EnumConstantCase,     value: CamelCase }
+  - { key: readability-identifier-naming.EnumConstantPrefix,   value: k }
+  - { key: readability-identifier-naming.ScopedEnumConstantCase, value: CamelCase }
+  - { key: readability-identifier-naming.ScopedEnumConstantPrefix, value: k }
+
+  # 네임스페이스 — lower_case (anon namespace는 자동 제외)
+  - { key: readability-identifier-naming.NamespaceCase,        value: lower_case }
+  - { key: readability-identifier-naming.InlineNamespaceCase,  value: lower_case }
+
+  # 매크로 — UPPER_CASE
+  - { key: readability-identifier-naming.MacroDefinitionCase,  value: UPPER_CASE }
+
+  # 템플릿 매개변수
+  - { key: readability-identifier-naming.TemplateParameterCase, value: CamelCase }
+  - { key: readability-identifier-naming.TypeTemplateParameterCase, value: CamelCase }
+  - { key: readability-identifier-naming.ValueTemplateParameterCase, value: CamelCase }
+
+  # 추가 google 옵션
+  - { key: google-readability-namespace-comments.ShortNamespaceLines, value: 1 }
+  - { key: google-readability-namespace-comments.SpacesBeforeComments, value: 2 }
+
+FormatStyle: file
+...

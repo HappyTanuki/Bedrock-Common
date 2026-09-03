@@ -7,6 +7,7 @@
  * 지원합니다(구현: src/common/log.cc).
  */
 #pragma once
+#include <cstdint>
 #include <string_view>
 
 namespace bedrock::log {
@@ -17,7 +18,7 @@ namespace bedrock::log {
  * 숫자가 클수록 더 심각합니다. SetLogLevel() 로 지정한 값보다 낮은
  * 레벨의 로그 호출은 출력되지 않습니다.
  */
-enum Level {
+enum class Level : std::uint8_t {
   /** @brief 가장 상세한 추적 정보. */
   kTrace = 0,
   /** @brief 디버그용 상세 정보. */

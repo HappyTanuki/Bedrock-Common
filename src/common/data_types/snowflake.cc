@@ -28,9 +28,9 @@ static constexpr std::uint16_t kThreadIdMask = 0x7F;  // 7bit: 0~127
  */
 inline static std::uint16_t GetThisThreadId() {
   static std::atomic<std::uint32_t> counter{0};
-  thread_local std::uint16_t id = static_cast<std::uint16_t>(
+  thread_local auto thread_id = static_cast<std::uint16_t>(
       counter.fetch_add(1, std::memory_order_relaxed) & kThreadIdMask);
-  return id;
+  return thread_id;
 }
 
 /**
@@ -49,8 +49,8 @@ inline static std::uint64_t CurrentTimestampMs() {
  * @return 최초 호출 시각(밀리초). 이후 호출에서도 동일한 값을 반환한다.
  */
 inline static std::uint64_t EpochMs() {
-  static const std::uint64_t epoch = CurrentTimestampMs();
-  return epoch;
+  static const std::uint64_t kEpoch = CurrentTimestampMs();
+  return kEpoch;
 }
 
 Snowflake Snowflake::Generate(std::uint16_t machine_id) {
@@ -64,23 +64,25 @@ Snowflake Snowflake::Generate(std::uint16_t machine_id) {
     seq = 0;
   } else {
     now = last_ts;
-    if (seq >= 0xFFF) {  // 12bit 초과 → 다음 ms까지 yield & 스핀락
-      do {
+    if (seq >= 0xFFF) {  // 12bit 초과 -> 다음 ms까지 yield & 스핀락
+      std::this_thread::yield();
+      now = CurrentTimestampMs() - EpochMs();
+      while (now <= last_ts) {
         std::this_thread::yield();
         now = CurrentTimestampMs() - EpochMs();
-      } while (now <= last_ts);
+      }
       seq = 0;
     }
   }
 
   last_ts = now;
 
-  Snowflake s = 0llu;
-  s.sign = 0;
-  s.timestamp = now;
-  s.machine_id = machine_id;
-  s.thread_id = GetThisThreadId();
-  s.sequence = seq++;
-  return s;
+  auto snowflake = Snowflake(0LLU);
+  snowflake.sign = 0;
+  snowflake.timestamp = now;
+  snowflake.machine_id = machine_id;
+  snowflake.thread_id = GetThisThreadId();
+  snowflake.sequence = seq++;
+  return snowflake;
 }
 }  // namespace bedrock

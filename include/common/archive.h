@@ -4,11 +4,11 @@
  *
  * 사용자 데이터 타입이 구현해야 하는 Schema 인터페이스를 정의한다.
  * Visitor 패턴의 Element 역할이며, 실제 방문 로직은
- * archive/visitor.h 의 Visitor가 담당한다.
+ * common/archive/visitor.h 의 Visitor가 담당한다.
  */
 #pragma once
 
-#include "archive/visitor.h"
+#include "common/archive/visitor.h"
 
 namespace bedrock::archive {
 
@@ -19,6 +19,11 @@ namespace bedrock::archive {
  * 통해 직렬화·역직렬화될 수 있다.
  */
 struct Schema {
+  Schema() = default;
+  Schema(const Schema&) = delete;
+  Schema& operator=(const Schema&) = delete;
+  Schema(Schema&&) = delete;
+  Schema& operator=(Schema&&) = delete;
   /** @brief 가상 소멸자. */
   virtual ~Schema();
   /**
