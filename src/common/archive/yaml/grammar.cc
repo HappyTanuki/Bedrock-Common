@@ -42,13 +42,13 @@ constinit Grammar::StripState Grammar::strip_state;
 constinit Grammar::ClipState Grammar::clip_state;
 constinit Grammar::KeepState Grammar::keep_state;
 
-void Grammar::Advance(ParseState& cur, std::size_t repetition_count) noexcept {
-  assert(repetition_count <= cur.cps.size());
+void Grammar::Advance(ParseState& cur, std::size_t count) noexcept {
+  assert(count <= cur.cps.size());
 
-  const auto new_before_size = cur.before.size() + repetition_count;
+  const auto new_before_size = cur.before.size() + count;
 
   cur.before = {cur.before.data(), new_before_size};
-  cur.cps = cur.cps.subspan(repetition_count);
+  cur.cps = cur.cps.subspan(count);
   if (cur.diag != nullptr) {
     cur.diag->furthest = std::max(cur.diag->furthest, cur.before.size());
   }
@@ -65,10 +65,10 @@ void Grammar::AddNode(ParseState& cur, SyntaxNode node) {
   const Frame frame = cur.arena->frames[cur.frame];
   cur.arena->node_links.push_back(
       NodeLink{.node = std::move(node), .previous = frame.children});
-  const std::size_t children = cur.arena->node_links.size() - 1;
+  const std::size_t child_index = cur.arena->node_links.size() - 1;
   cur.arena->frames.push_back(Frame{.kind = frame.kind,
                                     .begin = frame.begin,
-                                    .children = children,
+                                    .children = child_index,
                                     .parent = frame.parent});
   cur.frame = cur.arena->frames.size() - 1;
 }
@@ -76,7 +76,8 @@ void Grammar::AddNode(ParseState& cur, SyntaxNode node) {
 void Grammar::AddEmpty(ParseState& cur) {
   AddNode(cur, {.kind = SyntaxKind::kScalar,
                 .begin = cur.before.size(),
-                .end = cur.before.size()});
+                .end = cur.before.size(),
+                .children = {}});
 }
 
 void Grammar::OpenNode(ParseState& cur, SyntaxKind kind, std::size_t begin) {
@@ -104,9 +105,9 @@ void Grammar::CloseNode(ParseState& cur, std::size_t end) {
 std::vector<SyntaxNode> Grammar::Materialize(const Arena& arena,
                                              std::size_t nodes) {
   std::vector<SyntaxNode> result;
-  for (std::size_t node = nodes; node != kNoArenaEntry;
-       node = arena.node_links[node].previous) {
-    result.push_back(arena.node_links[node].node);
+  for (std::size_t index = nodes; index != kNoArenaEntry;
+       index = arena.node_links[index].previous) {
+    result.push_back(arena.node_links[index].node);
   }
   std::ranges::reverse(result);
   return result;
@@ -122,28 +123,28 @@ ChompKind Grammar::ChompKindOf(const ChompingState* trial) {
 }
 LineCol OffsetToLineCol(std::span<const std::uint32_t> buf,
                         std::size_t offset) {
-  LineCol line_count{1, 1};
+  LineCol location{1, 1};
   const std::size_t end = offset < buf.size() ? offset : buf.size();
   for (std::size_t index = 0; index < end; index++) {
     const std::uint32_t character = buf[index];
     if (character == '\n') {
-      line_count.line++;
-      line_count.col = 1;
+      location.line++;
+      location.col = 1;
     } else if (character == '\r') {
       if (index + 1 < end && buf[index + 1] == '\n') {
         continue;  // CRLF의 중간 — LF가 줄을 넘긴다
       }
-      line_count.line++;
-      line_count.col = 1;
+      location.line++;
+      location.col = 1;
     } else {
-      line_count.col++;
+      location.col++;
     }
   }
-  return line_count;
+  return location;
 }
 std::uint32_t Grammar::At(std::span<const std::uint32_t> cps,
-                          std::size_t repetition_index) noexcept {
-  return repetition_index < cps.size() ? cps[repetition_index] : 0;
+                          std::size_t index) noexcept {
+  return index < cps.size() ? cps[index] : 0;
 }
 std::span<const std::uint32_t> Grammar::Subspan(
     std::span<const std::uint32_t> cps, std::size_t offset) noexcept {
@@ -164,22 +165,21 @@ std::span<const std::uint32_t> Grammar::Subspan(
   return cps.subspan(offset, count);
 }
 bool Grammar::AtEnd(std::span<const std::uint32_t> cps,
-                    std::size_t repetition_index) noexcept {
-  return repetition_index >= cps.size();
+                    std::size_t index) noexcept {
+  return index >= cps.size();
 }
 bool Grammar::AtLineStart(const ParseState& cur) noexcept {
   // BOM은 줄 내용이 아님([202][211]에서 문서 경계에만 등장) — 건너뛰고 판정
-  std::span<const std::uint32_t> byte = cur.before;
-  while (!byte.empty() && byte.back() == kCByteOrderMark) {
-    // empty가 아니기 때문에 size() - 1이 유효하다.
+  std::span<const std::uint32_t> consumed = cur.before;
+  while (!consumed.empty() && consumed.back() == kCByteOrderMark) {
     // 앞에서부터 size() - 1, 즉 맨 뒤 하나(c-byte-order-mark)를 자른다.
-    byte = byte.first(byte.size() - 1);
+    consumed = consumed.first(consumed.size() - 1);
   }
-  if (byte.empty()) {
+  if (consumed.empty()) {
     // cur 이전이 빈 상황(스트림의 시작 내지는 파일의 시작인 상황)
     return true;
   }
-  const std::uint32_t prev = byte.back();
+  const std::uint32_t prev = consumed.back();
   if (prev == kBLineFeed) {
     // LF(/n) 이후.(자명히 linestart임)
     return true;
@@ -208,20 +208,21 @@ std::ptrdiff_t Grammar::DetectScalarIndentation(
   // 8.1.1.1: 첫 비어있지 않은 행의 들여쓰기 w로 m = w - n (m >= 1).
   // 선행 빈 행이 그보다 더 들여쓰여 있으면 에러(0 반환). 내용 행이 없으면
   // 가장 긴 빈 행의 공백 수 기준.
-  std::size_t repetition_index = 0;
+  std::size_t index = 0;
   std::size_t max_empty = 0;
   while (true) {
-    const std::size_t width = LeadingSpaces(cps.subspan(repetition_index));
-    const std::size_t pair = repetition_index + width;
-    if (AtEnd(cps, pair)) {
+    const std::size_t width = LeadingSpaces(cps.subspan(index));
+    const std::size_t content_index = index + width;
+    if (AtEnd(cps, content_index)) {
       const std::ptrdiff_t indent_width =
           static_cast<std::ptrdiff_t>(max_empty) - n;
       return indent_width < 1 ? 1 : indent_width;
     }
-    if (const std::size_t byte = IsbBreak(cps.subspan(pair))) {
+    if (const std::size_t break_length =
+            IsbBreak(cps.subspan(content_index))) {
       // 공백만 있는 빈 행
       max_empty = std::max(width, max_empty);
-      repetition_index = pair + byte;
+      index = content_index + break_length;
       continue;
     }
     // 첫 내용 행
@@ -474,9 +475,9 @@ std::size_t Grammar::IsnsUriChar(std::span<const std::uint32_t> cps) {
   return 0;
 }
 std::size_t Grammar::IsnsTagChar(std::span<const std::uint32_t> cps) {
-  const std::size_t ns_uri_char = IsnsUriChar(cps);
+  const std::size_t length = IsnsUriChar(cps);
   // 일단 ns-uri-char여야만 함
-  if (ns_uri_char == 0U) {
+  if (length == 0U) {
     return 0;
   }
   switch (At(cps, 0)) {
@@ -490,7 +491,7 @@ std::size_t Grammar::IsnsTagChar(std::span<const std::uint32_t> cps) {
       break;
     }
   }
-  return ns_uri_char;
+  return length;
 }
 std::uint32_t Grammar::IsnsEscHorizontalTab(const std::uint32_t code_point) {
   switch (code_point) {
@@ -561,14 +562,14 @@ std::size_t Grammar::IscNsEscChar(std::span<const std::uint32_t> cps) {
         return 2;
       }
       const std::span<const std::uint32_t> rest = Subspan(cps, 1);
-      if (const std::size_t event = IsnsEsc8Bit(rest)) {
-        return event + 1;
+      if (const std::size_t length = IsnsEsc8Bit(rest)) {
+        return length + 1;
       }
-      if (const std::size_t event = IsnsEsc16Bit(rest)) {
-        return event + 1;
+      if (const std::size_t length = IsnsEsc16Bit(rest)) {
+        return length + 1;
       }
-      if (const std::size_t event = IsnsEsc32Bit(rest)) {
-        return event + 1;
+      if (const std::size_t length = IsnsEsc32Bit(rest)) {
+        return length + 1;
       }
       break;
     }
@@ -580,16 +581,14 @@ bool Grammar::IssIndent(ParseState& cur, const std::ptrdiff_t n) {
   if (n <= 0) {
     return true;
   }
-  const auto unescaped_count = static_cast<std::size_t>(n);
-  // unescaped_count는 1부터임, 따라서 n=1이라면 s-space가 1번 나오는지
-  // 검사한다.
-  for (std::size_t repetition_index = 0; repetition_index < unescaped_count;
-       repetition_index++) {
-    if (At(cur.cps, repetition_index) != kSSpace) {
+  const auto count = static_cast<std::size_t>(n);
+  // count는 확인할 들여쓰기 폭이므로 n=1이면 s-space 하나를 확인한다.
+  for (std::size_t index = 0; index < count; index++) {
+    if (At(cur.cps, index) != kSSpace) {
       return false;
     }
   }
-  Advance(cur, unescaped_count);
+  Advance(cur, count);
   return true;
 }
 bool Grammar::IssIndentLessThan(ParseState& cur, const std::ptrdiff_t n) {
@@ -670,9 +669,9 @@ bool Grammar::State::IslEmpty(ParseState& cur, const std::ptrdiff_t n) const {
   {
     ParseState trial = cur;
     if (IssLinePrefix(trial, n)) {
-      const auto byte = IsbAsLineFeed(trial.cps);
-      if (byte != 0U) {
-        Advance(trial, byte);
+      const auto break_length = IsbAsLineFeed(trial.cps);
+      if (break_length != 0U) {
+        Advance(trial, break_length);
         cur = trial;
         return true;
       }
@@ -682,9 +681,9 @@ bool Grammar::State::IslEmpty(ParseState& cur, const std::ptrdiff_t n) const {
   {
     ParseState trial = cur;
     if (IssIndentLessThan(trial, n)) {
-      const auto byte = IsbAsLineFeed(trial.cps);
-      if (byte != 0U) {
-        Advance(trial, byte);
+      const auto break_length = IsbAsLineFeed(trial.cps);
+      if (break_length != 0U) {
+        Advance(trial, break_length);
         cur = trial;
         return true;
       }
@@ -694,11 +693,11 @@ bool Grammar::State::IslEmpty(ParseState& cur, const std::ptrdiff_t n) const {
 }
 bool Grammar::State::IsbLTrimmed(ParseState& cur,
                                  const std::ptrdiff_t n) const {
-  const std::size_t byte = IsbNonContent(cur.cps);
-  if (byte == 0U) {
+  const std::size_t break_length = IsbNonContent(cur.cps);
+  if (break_length == 0U) {
     return false;
   }
-  Advance(cur, byte);
+  Advance(cur, break_length);
   std::size_t count = 0;
   while (true) {
     ParseState trial = cur;
@@ -721,9 +720,9 @@ bool Grammar::State::IsbLFolded(ParseState& cur, const std::ptrdiff_t n) const {
       return true;
     }
   }
-  const std::size_t byte = IsbAsSpace(cur.cps);
-  if (byte != 0U) {
-    Advance(cur, byte);
+  const std::size_t break_length = IsbAsSpace(cur.cps);
+  if (break_length != 0U) {
+    Advance(cur, break_length);
     return true;
   }
   return false;
@@ -739,20 +738,20 @@ bool Grammar::IscNbCommentText(ParseState& cur) {
   if (At(cur.cps, 0) != kCComment) {
     return false;
   }
-  std::size_t repetition_index = 1;
-  while (IsnbChar(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 1;
+  while (IsnbChar(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  Advance(cur, repetition_index);
+  Advance(cur, index);
   return true;
 }
 bool Grammar::IsbComment(ParseState& cur) {
   if (AtEnd(cur.cps, 0)) {
     return true;  // <end-of-input>
   }
-  const std::size_t byte = IsbNonContent(cur.cps);
-  if (byte != 0U) {
-    Advance(cur, byte);
+  const std::size_t break_length = IsbNonContent(cur.cps);
+  if (break_length != 0U) {
+    Advance(cur, break_length);
     return true;
   }
   return false;
@@ -866,25 +865,25 @@ bool Grammar::IsnsReservedDirective(ParseState& cur) {
   return true;
 }
 bool Grammar::IsnsDirectiveName(ParseState& cur) {
-  std::size_t repetition_index = 0;
-  while (IsnsChar(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 0;
+  while (IsnsChar(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  if (repetition_index == 0) {
+  if (index == 0) {
     return false;
   }
-  Advance(cur, repetition_index);
+  Advance(cur, index);
   return true;
 }
 bool Grammar::IsnsDirectiveParameter(ParseState& cur) {
-  std::size_t repetition_index = 0;
-  while (IsnsChar(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 0;
+  while (IsnsChar(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  if (repetition_index == 0) {
+  if (index == 0) {
     return false;
   }
-  Advance(cur, repetition_index);
+  Advance(cur, index);
   return true;
 }
 bool Grammar::IsnsYamlDirective(ParseState& cur) {
@@ -899,25 +898,25 @@ bool Grammar::IsnsYamlDirective(ParseState& cur) {
   return IsnsYamlVersion(cur);
 }
 bool Grammar::IsnsYamlVersion(ParseState& cur) {
-  std::size_t repetition_index = 0;
-  while (IsnsDecDigit(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 0;
+  while (IsnsDecDigit(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  if (repetition_index == 0) {
+  if (index == 0) {
     return false;
   }
-  if (At(cur.cps, repetition_index) != '.') {
+  if (At(cur.cps, index) != '.') {
     return false;
   }
-  std::size_t second_repetition_index = repetition_index + 1;
-  const std::size_t start2 = second_repetition_index;
-  while (IsnsDecDigit(At(cur.cps, second_repetition_index)) != 0U) {
-    second_repetition_index++;
+  std::size_t second_index = index + 1;
+  const std::size_t second_start = second_index;
+  while (IsnsDecDigit(At(cur.cps, second_index)) != 0U) {
+    second_index++;
   }
-  if (second_repetition_index == start2) {
+  if (second_index == second_start) {
     return false;
   }
-  Advance(cur, second_repetition_index);
+  Advance(cur, second_index);
   return true;
 }
 bool Grammar::IsnsTagDirective(ParseState& cur) {
@@ -968,17 +967,17 @@ bool Grammar::IscNamedTagHandle(ParseState& cur) {
   if (At(cur.cps, 0) != kCTag) {
     return false;
   }
-  std::size_t repetition_index = 1;
-  while (IsnsWordChar(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 1;
+  while (IsnsWordChar(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  if (repetition_index == 1) {
+  if (index == 1) {
     return false;  // ns-word-char+ — 1자 이상
   }
-  if (At(cur.cps, repetition_index) != kCTag) {
+  if (At(cur.cps, index) != kCTag) {
     return false;
   }
-  Advance(cur, repetition_index + 1);
+  Advance(cur, index + 1);
   return true;
 }
 
@@ -994,20 +993,20 @@ bool Grammar::IscNsLocalTagPrefix(ParseState& cur) {
     return false;
   }
   Advance(cur, 1);
-  while (const std::size_t code_unit = IsnsUriChar(cur.cps)) {
-    Advance(cur, code_unit);
+  while (const std::size_t length = IsnsUriChar(cur.cps)) {
+    Advance(cur, length);
   }
   return true;
 }
 
 bool Grammar::IsnsGlobalTagPrefix(ParseState& cur) {
-  const std::size_t trial = IsnsTagChar(cur.cps);
-  if (trial == 0U) {
+  const std::size_t tag_length = IsnsTagChar(cur.cps);
+  if (tag_length == 0U) {
     return false;
   }
-  Advance(cur, trial);
-  while (const std::size_t code_unit = IsnsUriChar(cur.cps)) {
-    Advance(cur, code_unit);
+  Advance(cur, tag_length);
+  while (const std::size_t uri_length = IsnsUriChar(cur.cps)) {
+    Advance(cur, uri_length);
   }
   return true;
 }
@@ -1036,13 +1035,14 @@ bool Grammar::State::IscNsProperties(ParseState& cur,
 }
 
 bool Grammar::IscNsTagProperty(ParseState& cur) {
-  const std::size_t trailing_breaks = cur.before.size();
+  const std::size_t begin = cur.before.size();
   {
     ParseState trial = cur;
     if (IscVerbatimTag(trial)) {
       AddNode(trial, {.kind = SyntaxKind::kTag,
-                      .begin = trailing_breaks,
-                      .end = trial.before.size()});
+                      .begin = begin,
+                      .end = trial.before.size(),
+                .children = {}});
       cur = trial;
       return true;
     }
@@ -1051,8 +1051,9 @@ bool Grammar::IscNsTagProperty(ParseState& cur) {
     ParseState trial = cur;
     if (IscNsShorthandTag(trial)) {
       AddNode(trial, {.kind = SyntaxKind::kTag,
-                      .begin = trailing_breaks,
-                      .end = trial.before.size()});
+                      .begin = begin,
+                      .end = trial.before.size(),
+                .children = {}});
       cur = trial;
       return true;
     }
@@ -1061,8 +1062,9 @@ bool Grammar::IscNsTagProperty(ParseState& cur) {
     return false;
   }
   AddNode(cur, {.kind = SyntaxKind::kTag,
-                .begin = trailing_breaks,
-                .end = cur.before.size()});
+                .begin = begin,
+                .end = cur.before.size(),
+                .children = {}});
   return true;
 }
 
@@ -1072,8 +1074,8 @@ bool Grammar::IscVerbatimTag(ParseState& cur) {
   }
   Advance(cur, 2);
   std::size_t count = 0;
-  while (const std::size_t code_unit = IsnsUriChar(cur.cps)) {
-    Advance(cur, code_unit);
+  while (const std::size_t length = IsnsUriChar(cur.cps)) {
+    Advance(cur, length);
     count++;
   }
   if (count == 0U) {
@@ -1091,8 +1093,8 @@ bool Grammar::IscNsShorthandTag(ParseState& cur) {
     return false;
   }
   std::size_t count = 0;
-  while (const std::size_t trial = IsnsTagChar(cur.cps)) {
-    Advance(cur, trial);
+  while (const std::size_t length = IsnsTagChar(cur.cps)) {
+    Advance(cur, length);
     count++;
   }
   return count != 0;
@@ -1111,13 +1113,14 @@ bool Grammar::IscNsAnchorProperty(ParseState& cur) {
     return false;
   }
   Advance(cur, 1);
-  const std::size_t non_break_count = cur.before.size();
+  const std::size_t begin = cur.before.size();
   if (!IsnsAnchorName(cur)) {
     return false;
   }
   AddNode(cur, {.kind = SyntaxKind::kAnchor,
-                .begin = non_break_count,
-                .end = cur.before.size()});
+                .begin = begin,
+                .end = cur.before.size(),
+                .children = {}});
   return true;
 }
 
@@ -1132,14 +1135,14 @@ std::uint32_t Grammar::IsnsAnchorChar(const std::uint32_t code_point) {
 }
 
 bool Grammar::IsnsAnchorName(ParseState& cur) {
-  std::size_t repetition_index = 0;
-  while (IsnsAnchorChar(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 0;
+  while (IsnsAnchorChar(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  if (repetition_index == 0) {
+  if (index == 0) {
     return false;
   }
-  Advance(cur, repetition_index);
+  Advance(cur, index);
   return true;
 }
 
@@ -1148,13 +1151,14 @@ bool Grammar::IscNsAliasNode(ParseState& cur) {
     return false;
   }
   Advance(cur, 1);
-  const std::size_t non_break_count = cur.before.size();
+  const std::size_t begin = cur.before.size();
   if (!IsnsAnchorName(cur)) {
     return false;
   }
   AddNode(cur, {.kind = SyntaxKind::kAlias,
-                .begin = non_break_count,
-                .end = cur.before.size()});
+                .begin = begin,
+                .end = cur.before.size(),
+                .children = {}});
   return true;
 }
 
@@ -1166,8 +1170,8 @@ bool Grammar::IseScalar(ParseState& cur) {
 bool Grammar::IseNode(ParseState& cur) { return IseScalar(cur); }
 
 std::size_t Grammar::IsnbDoubleChar(std::span<const std::uint32_t> cps) {
-  if (const std::size_t event = IscNsEscChar(cps)) {
-    return event;
+  if (const std::size_t length = IscNsEscChar(cps)) {
+    return length;
   }
   const std::uint32_t code_point = At(cps, 0);
   if (IsnbJson(code_point) == 0U) {
@@ -1180,15 +1184,15 @@ std::size_t Grammar::IsnbDoubleChar(std::span<const std::uint32_t> cps) {
 }
 
 std::size_t Grammar::IsnsDoubleChar(std::span<const std::uint32_t> cps) {
-  const std::size_t len = IsnbDoubleChar(cps);
-  if (len == 0U) {
+  const std::size_t length = IsnbDoubleChar(cps);
+  if (length == 0U) {
     return 0;
   }
   // 이스케이프(길이 2+)는 공백을 나타내더라도 ns로 취급
-  if (len == 1 && (IssWhite(At(cps, 0)) != 0U)) {
+  if (length == 1 && (IssWhite(At(cps, 0)) != 0U)) {
     return 0;
   }
-  return len;
+  return length;
 }
 
 bool Grammar::State::IscDoubleQuoted(ParseState& cur,
@@ -1197,19 +1201,20 @@ bool Grammar::State::IscDoubleQuoted(ParseState& cur,
     return false;
   }
   Advance(cur, 1);
-  const std::size_t byte = cur.before.size();
+  const std::size_t begin = cur.before.size();
   if (!IsnbDoubleText(cur, n)) {
     return false;
   }
-  const std::size_t event = cur.before.size();
+  const std::size_t end = cur.before.size();
   if (At(cur.cps, 0) != kCDoubleQuote) {
     return false;
   }
   Advance(cur, 1);
   AddNode(cur, {.kind = SyntaxKind::kScalar,
                 .style = ScalarStyle::kDoubleQuoted,
-                .begin = byte,
-                .end = event});
+                .begin = begin,
+                .end = end,
+                .children = {}});
   return true;
 }
 
@@ -1236,8 +1241,8 @@ bool Grammar::FlowKeyState::IsnbDoubleText(ParseState& cur,
 }
 
 bool Grammar::IsnbDoubleOneLine(ParseState& cur) {
-  while (const std::size_t digit = IsnbDoubleChar(cur.cps)) {
-    Advance(cur, digit);
+  while (const std::size_t length = IsnbDoubleChar(cur.cps)) {
+    Advance(cur, length);
   }
   return true;
 }
@@ -1250,11 +1255,12 @@ bool Grammar::IssDoubleEscaped(ParseState& cur, const std::ptrdiff_t n) {
   if (At(cur.cps, width) != kCEscape) {
     return false;
   }
-  const std::size_t byte = IsbNonContent(cur.cps.subspan(width + 1));
-  if (byte == 0U) {
+  const std::size_t break_length =
+      IsbNonContent(cur.cps.subspan(width + 1));
+  if (break_length == 0U) {
     return false;
   }
-  Advance(cur, width + 1 + byte);
+  Advance(cur, width + 1 + break_length);
   while (true) {
     ParseState trial = cur;
     if (!flow_in_state.IslEmpty(trial, n)) {
@@ -1278,16 +1284,16 @@ bool Grammar::IssDoubleBreak(ParseState& cur, const std::ptrdiff_t n) {
 
 bool Grammar::IsnbNsDoubleInLine(ParseState& cur) {
   while (true) {
-    std::size_t repetition_index = 0;
-    while (IssWhite(At(cur.cps, repetition_index)) != 0U) {
-      repetition_index++;
+    std::size_t index = 0;
+    while (IssWhite(At(cur.cps, index)) != 0U) {
+      index++;
     }
-    const std::size_t digit = IsnsDoubleChar(cur.cps.subspan(repetition_index));
-    if (digit == 0U) {
+    const std::size_t length = IsnsDoubleChar(cur.cps.subspan(index));
+    if (length == 0U) {
       break;
     }
     // 공백은 ns 문자가 따라올 때만 함께 소비
-    Advance(cur, repetition_index + digit);
+    Advance(cur, index + length);
   }
   return true;
 }
@@ -1307,20 +1313,20 @@ bool Grammar::IssDoubleNextLine(ParseState& cur, const std::ptrdiff_t n) {
     if (IscForbidden(trial)) {
       break;
     }
-    const std::size_t digit = IsnsDoubleChar(trial.cps);
-    if (digit == 0U) {
+    const std::size_t length = IsnsDoubleChar(trial.cps);
+    if (length == 0U) {
       res = trial;  // 선택 그룹 생략 — 줄바꿈까지만 소비하고 종료
       have = true;
       break;
     }
-    Advance(trial, digit);
+    Advance(trial, length);
     IsnbNsDoubleInLine(trial);
     ParseState afterw = trial;
-    std::size_t wsp = 0;
-    while (IssWhite(At(afterw.cps, wsp)) != 0U) {
-      wsp++;
+    std::size_t whitespace_count = 0;
+    while (IssWhite(At(afterw.cps, whitespace_count)) != 0U) {
+      whitespace_count++;
     }
-    Advance(afterw, wsp);
+    Advance(afterw, whitespace_count);
     res = afterw;  // (재귀 | s-white*)의 s-white* 폴백 지점
     have = true;
     work = trial;  // 성공한 재귀 단계만 commit
@@ -1355,8 +1361,8 @@ std::size_t Grammar::IscQuotedQuote(std::span<const std::uint32_t> cps) {
 }
 
 std::size_t Grammar::IsnbSingleChar(std::span<const std::uint32_t> cps) {
-  if (const std::size_t quote = IscQuotedQuote(cps)) {
-    return quote;
+  if (const std::size_t length = IscQuotedQuote(cps)) {
+    return length;
   }
   const std::uint32_t code_point = At(cps, 0);
   if (IsnbJson(code_point) == 0U) {
@@ -1369,14 +1375,14 @@ std::size_t Grammar::IsnbSingleChar(std::span<const std::uint32_t> cps) {
 }
 
 std::size_t Grammar::IsnsSingleChar(std::span<const std::uint32_t> cps) {
-  const std::size_t len = IsnbSingleChar(cps);
-  if (len == 0U) {
+  const std::size_t length = IsnbSingleChar(cps);
+  if (length == 0U) {
     return 0;
   }
-  if (len == 1 && (IssWhite(At(cps, 0)) != 0U)) {
+  if (length == 1 && (IssWhite(At(cps, 0)) != 0U)) {
     return 0;
   }
-  return len;
+  return length;
 }
 
 bool Grammar::State::IscSingleQuoted(ParseState& cur,
@@ -1385,19 +1391,20 @@ bool Grammar::State::IscSingleQuoted(ParseState& cur,
     return false;
   }
   Advance(cur, 1);
-  const std::size_t byte = cur.before.size();
+  const std::size_t begin = cur.before.size();
   if (!IsnbSingleText(cur, n)) {
     return false;
   }
-  const std::size_t event = cur.before.size();
+  const std::size_t end = cur.before.size();
   if (At(cur.cps, 0) != kCSingleQuote) {
     return false;
   }
   Advance(cur, 1);
   AddNode(cur, {.kind = SyntaxKind::kScalar,
                 .style = ScalarStyle::kSingleQuoted,
-                .begin = byte,
-                .end = event});
+                .begin = begin,
+                .end = end,
+                .children = {}});
   return true;
 }
 
@@ -1424,23 +1431,23 @@ bool Grammar::FlowKeyState::IsnbSingleText(ParseState& cur,
 }
 
 bool Grammar::IsnbSingleOneLine(ParseState& cur) {
-  while (const std::size_t digit = IsnbSingleChar(cur.cps)) {
-    Advance(cur, digit);
+  while (const std::size_t length = IsnbSingleChar(cur.cps)) {
+    Advance(cur, length);
   }
   return true;
 }
 
 bool Grammar::IsnbNsSingleInLine(ParseState& cur) {
   while (true) {
-    std::size_t repetition_index = 0;
-    while (IssWhite(At(cur.cps, repetition_index)) != 0U) {
-      repetition_index++;
+    std::size_t index = 0;
+    while (IssWhite(At(cur.cps, index)) != 0U) {
+      index++;
     }
-    const std::size_t digit = IsnsSingleChar(cur.cps.subspan(repetition_index));
-    if (digit == 0U) {
+    const std::size_t length = IsnsSingleChar(cur.cps.subspan(index));
+    if (length == 0U) {
       break;
     }
-    Advance(cur, repetition_index + digit);
+    Advance(cur, index + length);
   }
   return true;
 }
@@ -1460,20 +1467,20 @@ bool Grammar::IssSingleNextLine(ParseState& cur, const std::ptrdiff_t n) {
     if (IscForbidden(trial)) {
       break;
     }
-    const std::size_t digit = IsnsSingleChar(trial.cps);
-    if (digit == 0U) {
+    const std::size_t length = IsnsSingleChar(trial.cps);
+    if (length == 0U) {
       res = trial;
       have = true;
       break;
     }
-    Advance(trial, digit);
+    Advance(trial, length);
     IsnbNsSingleInLine(trial);
     ParseState afterw = trial;
-    std::size_t wsp = 0;
-    while (IssWhite(At(afterw.cps, wsp)) != 0U) {
-      wsp++;
+    std::size_t whitespace_count = 0;
+    while (IssWhite(At(afterw.cps, whitespace_count)) != 0U) {
+      whitespace_count++;
     }
-    Advance(afterw, wsp);
+    Advance(afterw, whitespace_count);
     res = afterw;
     have = true;
     work = trial;
@@ -1832,26 +1839,26 @@ bool Grammar::State::IsnsFlowMapImplicitEntry(ParseState& cur,
   // 선언적 알터네이션 의미론 유지
   const ParseState start = cur;
   int winner = -1;
-  std::size_t best = 0;
+  std::size_t best_offset = 0;
   {
     ParseState trial = start;
     if (IsnsFlowMapYamlKeyEntry(trial, n)) {
       winner = 0;
-      best = trial.before.size();
+      best_offset = trial.before.size();
     }
   }
   {
     ParseState trial = start;
     if (IscNsFlowMapEmptyKeyEntry(trial, n) &&
-        (winner < 0 || trial.before.size() > best)) {
+        (winner < 0 || trial.before.size() > best_offset)) {
       winner = 1;
-      best = trial.before.size();
+      best_offset = trial.before.size();
     }
   }
   {
     ParseState trial = start;
     if (IscNsFlowMapJsonKeyEntry(trial, n) &&
-        (winner < 0 || trial.before.size() > best)) {
+        (winner < 0 || trial.before.size() > best_offset)) {
       winner = 2;
     }
   }
@@ -1976,26 +1983,26 @@ bool Grammar::State::IsnsFlowPairEntry(ParseState& cur,
                                        const std::ptrdiff_t n) const {
   const ParseState start = cur;
   int winner = -1;
-  std::size_t best = 0;
+  std::size_t best_offset = 0;
   {
     ParseState trial = start;
     if (IsnsFlowPairYamlKeyEntry(trial, n)) {
       winner = 0;
-      best = trial.before.size();
+      best_offset = trial.before.size();
     }
   }
   {
     ParseState trial = start;
     if (IscNsFlowMapEmptyKeyEntry(trial, n) &&
-        (winner < 0 || trial.before.size() > best)) {
+        (winner < 0 || trial.before.size() > best_offset)) {
       winner = 1;
-      best = trial.before.size();
+      best_offset = trial.before.size();
     }
   }
   {
     ParseState trial = start;
     if (IscNsFlowPairJsonKeyEntry(trial, n) &&
-        (winner < 0 || trial.before.size() > best)) {
+        (winner < 0 || trial.before.size() > best_offset)) {
       winner = 2;
     }
   }
@@ -2031,10 +2038,10 @@ bool Grammar::State::IscNsFlowPairJsonKeyEntry(ParseState& cur,
 
 bool Grammar::State::IsnsSImplicitYamlKey(ParseState& cur) const {
   // 스펙의 1024자 제한을 파싱 창으로도 강제해 키 후보 파싱 비용을 제한
-  const std::size_t win =
+  const std::size_t window_size =
       std::min(cur.cps.size(), static_cast<std::size_t>(1026));
   ParseState sub = cur;  // 제한 창에서 만든 구문 트리/진단 상태를 성공 시 승계
-  sub.cps = cur.cps.first(win);
+  sub.cps = cur.cps.first(window_size);
   if (!IsnsFlowYamlNode(sub, 0)) {  // n은 무관(단일 행)
     return false;
   }
@@ -2051,10 +2058,10 @@ bool Grammar::State::IsnsSImplicitYamlKey(ParseState& cur) const {
 
 bool Grammar::State::IscSImplicitJsonKey(ParseState& cur) const {
   // 스펙의 1024자 제한을 파싱 창으로도 강제해 키 후보 파싱 비용을 제한
-  const std::size_t win =
+  const std::size_t window_size =
       std::min(cur.cps.size(), static_cast<std::size_t>(1026));
   ParseState sub = cur;  // 제한 창에서 만든 구문 트리/진단 상태를 성공 시 승계
-  sub.cps = cur.cps.first(win);
+  sub.cps = cur.cps.first(window_size);
   if (!IscFlowJsonNode(sub, 0)) {  // n은 무관(단일 행)
     return false;
   }
@@ -2071,14 +2078,15 @@ bool Grammar::State::IscSImplicitJsonKey(ParseState& cur) const {
 
 bool Grammar::State::IsnsFlowYamlContent(ParseState& cur,
                                          const std::ptrdiff_t n) const {
-  const std::size_t byte = cur.before.size();
+  const std::size_t begin = cur.before.size();
   if (!IsnsPlain(cur, n)) {
     return false;
   }
   AddNode(cur, {.kind = SyntaxKind::kScalar,
                 .style = ScalarStyle::kPlain,
-                .begin = byte,
-                .end = cur.before.size()});
+                .begin = begin,
+                .end = cur.before.size(),
+                .children = {}});
   return true;
 }
 
@@ -2233,9 +2241,9 @@ bool Grammar::ChompingState::IsbChompedLast(ParseState& cur) const {
   if (AtEnd(cur.cps, 0)) {
     return true;  // <end-of-input>
   }
-  const std::size_t byte = IsbAsLineFeed(cur.cps);
-  if (byte != 0U) {
-    Advance(cur, byte);
+  const std::size_t break_length = IsbAsLineFeed(cur.cps);
+  if (break_length != 0U) {
+    Advance(cur, break_length);
     return true;
   }
   return false;
@@ -2244,9 +2252,9 @@ bool Grammar::StripState::IsbChompedLast(ParseState& cur) const {
   if (AtEnd(cur.cps, 0)) {
     return true;
   }
-  const std::size_t byte = IsbNonContent(cur.cps);
-  if (byte != 0U) {
-    Advance(cur, byte);
+  const std::size_t break_length = IsbNonContent(cur.cps);
+  if (break_length != 0U) {
+    Advance(cur, break_length);
     return true;
   }
   return false;
@@ -2266,11 +2274,11 @@ bool Grammar::IslStripEmpty(ParseState& cur, const std::ptrdiff_t n) {
     if (!IssIndentLessOrEqual(trial, n)) {
       break;
     }
-    const std::size_t byte = IsbNonContent(trial.cps);
-    if (byte == 0U) {
+    const std::size_t break_length = IsbNonContent(trial.cps);
+    if (break_length == 0U) {
       break;
     }
-    Advance(trial, byte);
+    Advance(trial, break_length);
     cur = trial;
   }
   {
@@ -2327,28 +2335,30 @@ bool Grammar::IscLLiteral(ParseState& cur, const std::ptrdiff_t n) {
     return false;
   }
   Advance(cur, 1);
-  const BlockHeader hex_value = IscBBlockHeader(cur);
-  if (!hex_value.ok) {
+  const BlockHeader header = IscBBlockHeader(cur);
+  if (!header.ok) {
     return false;
   }
-  std::ptrdiff_t indent_width = hex_value.indent_width;
+  std::ptrdiff_t indent_width = header.indent_width;
   if (indent_width == 0) {
-    const std::ptrdiff_t det = DetectScalarIndentation(cur.cps, n);
-    if (det == 0) {
+    const std::ptrdiff_t detected_indent_width =
+        DetectScalarIndentation(cur.cps, n);
+    if (detected_indent_width == 0) {
       return false;
     }
-    indent_width = det;
+    indent_width = detected_indent_width;
   }
-  const std::size_t byte = cur.before.size();
-  if (!IslLiteralContent(cur, n + indent_width, *hex_value.trial)) {
+  const std::size_t begin = cur.before.size();
+  if (!IslLiteralContent(cur, n + indent_width, *header.trial)) {
     return false;
   }
   AddNode(cur, {.kind = SyntaxKind::kScalar,
                 .style = ScalarStyle::kLiteral,
-                .chomp = ChompKindOf(hex_value.trial),
+                .chomp = ChompKindOf(header.trial),
                 .indent = n + indent_width,
-                .begin = byte,
-                .end = cur.before.size()});
+                .begin = begin,
+                .end = cur.before.size(),
+                .children = {}});
   return true;
 }
 
@@ -2369,23 +2379,23 @@ bool Grammar::IslNbLiteralText(ParseState& cur, const std::ptrdiff_t n) {
   if (IscForbidden(forbidden)) {
     return false;
   }
-  std::size_t repetition_index = 0;
-  while (IsnbChar(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 0;
+  while (IsnbChar(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  if (repetition_index == 0) {
+  if (index == 0) {
     return false;  // nb-char+ — 1자 이상
   }
-  Advance(cur, repetition_index);
+  Advance(cur, index);
   return true;
 }
 
 bool Grammar::IsbNbLiteralNext(ParseState& cur, const std::ptrdiff_t n) {
-  const std::size_t byte = IsbAsLineFeed(cur.cps);
-  if (byte == 0U) {
+  const std::size_t break_length = IsbAsLineFeed(cur.cps);
+  if (break_length == 0U) {
     return false;
   }
-  Advance(cur, byte);
+  Advance(cur, break_length);
   return IslNbLiteralText(cur, n);
 }
 
@@ -2417,28 +2427,30 @@ bool Grammar::IscLFolded(ParseState& cur, const std::ptrdiff_t n) {
     return false;
   }
   Advance(cur, 1);
-  const BlockHeader hex_value = IscBBlockHeader(cur);
-  if (!hex_value.ok) {
+  const BlockHeader header = IscBBlockHeader(cur);
+  if (!header.ok) {
     return false;
   }
-  std::ptrdiff_t indent_width = hex_value.indent_width;
+  std::ptrdiff_t indent_width = header.indent_width;
   if (indent_width == 0) {
-    const std::ptrdiff_t det = DetectScalarIndentation(cur.cps, n);
-    if (det == 0) {
+    const std::ptrdiff_t detected_indent_width =
+        DetectScalarIndentation(cur.cps, n);
+    if (detected_indent_width == 0) {
       return false;
     }
-    indent_width = det;
+    indent_width = detected_indent_width;
   }
-  const std::size_t byte = cur.before.size();
-  if (!IslFoldedContent(cur, n + indent_width, *hex_value.trial)) {
+  const std::size_t begin = cur.before.size();
+  if (!IslFoldedContent(cur, n + indent_width, *header.trial)) {
     return false;
   }
   AddNode(cur, {.kind = SyntaxKind::kScalar,
                 .style = ScalarStyle::kFolded,
-                .chomp = ChompKindOf(hex_value.trial),
+                .chomp = ChompKindOf(header.trial),
                 .indent = n + indent_width,
-                .begin = byte,
-                .end = cur.before.size()});
+                .begin = begin,
+                .end = cur.before.size(),
+                .children = {}});
   return true;
 }
 
@@ -2455,11 +2467,11 @@ bool Grammar::IssNbFoldedText(ParseState& cur, const std::ptrdiff_t n) {
   if (IsnsChar(At(cur.cps, 0)) == 0U) {
     return false;
   }
-  std::size_t repetition_index = 1;
-  while (IsnbChar(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 1;
+  while (IsnbChar(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  Advance(cur, repetition_index);
+  Advance(cur, index);
   return true;
 }
 
@@ -2488,20 +2500,20 @@ bool Grammar::IssNbSpacedText(ParseState& cur, const std::ptrdiff_t n) {
   if (IssWhite(At(cur.cps, 0)) == 0U) {
     return false;
   }
-  std::size_t repetition_index = 1;
-  while (IsnbChar(At(cur.cps, repetition_index)) != 0U) {
-    repetition_index++;
+  std::size_t index = 1;
+  while (IsnbChar(At(cur.cps, index)) != 0U) {
+    index++;
   }
-  Advance(cur, repetition_index);
+  Advance(cur, index);
   return true;
 }
 
 bool Grammar::IsbLSpaced(ParseState& cur, const std::ptrdiff_t n) {
-  const std::size_t byte = IsbAsLineFeed(cur.cps);
-  if (byte == 0U) {
+  const std::size_t break_length = IsbAsLineFeed(cur.cps);
+  if (break_length == 0U) {
     return false;
   }
-  Advance(cur, byte);
+  Advance(cur, break_length);
   while (true) {
     ParseState trial = cur;
     if (!block_in_state.IslEmpty(trial, n)) {
@@ -2553,11 +2565,11 @@ bool Grammar::IslNbDiffLines(ParseState& cur, const std::ptrdiff_t n) {
   }
   while (true) {
     ParseState trial = cur;
-    const std::size_t byte = IsbAsLineFeed(trial.cps);
-    if (byte == 0U) {
+    const std::size_t break_length = IsbAsLineFeed(trial.cps);
+    if (break_length == 0U) {
       break;
     }
-    Advance(trial, byte);
+    Advance(trial, break_length);
     if (!IslNbSameLines(trial, n)) {
       break;
     }

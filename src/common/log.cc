@@ -47,8 +47,10 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
 #else
   ::timespec monotonic_time{};
   ::clock_gettime(CLOCK_MONOTONIC, &monotonic_time);
-  milliseconds =
-      monotonic_time.tv_sec * 1000LL + monotonic_time.tv_nsec / 1000000LL;
+  milliseconds = static_cast<std::uint32_t>(
+      (static_cast<std::uint64_t>(monotonic_time.tv_sec) * 1000ULL +
+       static_cast<std::uint64_t>(monotonic_time.tv_nsec) / 1000000ULL) %
+      1000ULL);
 #endif
   milliseconds %= 1000;
   ::time_t timer = ::time(nullptr);
@@ -101,7 +103,7 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
 
   bool is_tty = true;
 
-#if _WIN32
+#ifdef _WIN32
   is_tty = ::_isatty(_fileno(stderr));
 #else
   is_tty = (::isatty(STDERR_FILENO) != 0);
@@ -127,9 +129,8 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
       case Level::kFatal:
         prefix += "\x1b[31m[FATAL]\x1b[0m";
         break;
-      default:
-        break;
     }
+    // Unknown values retain the prior defensive behavior: no level label.
   } else {
     switch (lvl) {
       case Level::kTrace:
@@ -150,9 +151,8 @@ void Log(Level lvl, std::string_view msg, bool level_setting) {
       case Level::kFatal:
         prefix += "[FATAL]";
         break;
-      default:
-        break;
     }
+    // Unknown values retain the prior defensive behavior: no level label.
   }
 
   std::cerr << prefix << "[" << std::this_thread::get_id() << "]: " << msg

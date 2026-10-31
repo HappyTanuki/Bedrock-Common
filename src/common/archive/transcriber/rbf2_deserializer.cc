@@ -22,25 +22,16 @@ namespace {
 constexpr std::array<std::uint8_t, 4> kMagic = {0x52, 0x46, 0x32, 0x01};
 constexpr std::size_t kFail = std::numeric_limits<std::size_t>::max();
 
-bedrock::Status BorrowStatus(const OwnedStatus& source,
-                             std::string& message_storage) {
-  message_storage = source.Message();
-  const bedrock::ErrorCode code =
-      source.Ok() ? bedrock::ErrorCode::kSuccess
-                  : static_cast<bedrock::ErrorCode>(source.code.value());
-  return bedrock::Status(code, message_storage);
-}
 }  // namespace
 
 template <>
 struct BinaryDeserializer<Rbf2Format>::Impl final : public Visitor {
  public:
-  explicit Impl(std::uint16_t id);
-  Impl(std::uint16_t id, std::string_view input);
+  Impl();
+  explicit Impl(std::string_view input);
   ~Impl() override;
 
   bedrock::Status Run(bedrock::archive::Schema& schema, std::string_view name);
-  [[nodiscard]] std::uint16_t MachineId() const noexcept { return machine_id; }
   [[nodiscard]] bedrock::Status ApiStatus() const noexcept {
     return api_status;
   }
@@ -106,7 +97,6 @@ struct BinaryDeserializer<Rbf2Format>::Impl final : public Visitor {
   /** @brief 현재 컨텍스트가 kFields면 접두 번호를 읽어 기대값과 대조한다. */
   void ExpectNumber(const Field& field);
 
-  std::uint16_t machine_id;
   std::string input_storage;
   std::string error_storage;
   bedrock::Status api_status = bedrock::Status(bedrock::ErrorCode::kNotReady);
@@ -133,13 +123,10 @@ bedrock::Status BinaryDeserializer<Rbf2Format>::Impl::Run(
   return api_status;
 }
 
-BinaryDeserializer<Rbf2Format>::Impl::Impl(std::uint16_t id)
-    : Visitor(id), machine_id(id) {}
+BinaryDeserializer<Rbf2Format>::Impl::Impl() = default;
 
-BinaryDeserializer<Rbf2Format>::Impl::Impl(std::uint16_t id,
-                                           std::string_view input)
-    : Visitor(id),
-      machine_id(id),
+BinaryDeserializer<Rbf2Format>::Impl::Impl(std::string_view input)
+    : Visitor(),
       input_storage(input),
       data_(reinterpret_cast<const std::uint8_t*>(input_storage.data()),
             input_storage.size()) {
@@ -427,13 +414,11 @@ Visitor& BinaryDeserializer<Rbf2Format>::Impl::Visit(const Field& field,
 }
 
 template <>
-BinaryDeserializer<Rbf2Format>::BinaryDeserializer(std::uint16_t machine_id)
-    : impl_(std::make_unique<Impl>(machine_id)) {}
+BinaryDeserializer<Rbf2Format>::BinaryDeserializer()
+    : impl_(std::make_unique<Impl>()) {}
 template <>
-BinaryDeserializer<Rbf2Format>::BinaryDeserializer(
-    std::uint16_t machine_id, std::span<const std::byte> input)
+BinaryDeserializer<Rbf2Format>::BinaryDeserializer(std::span<const std::byte> input)
     : impl_(std::make_unique<Impl>(
-          machine_id,
           std::string_view(reinterpret_cast<const char*>(input.data()),
                            input.size()))) {}
 template <>
@@ -448,7 +433,6 @@ template <>
 bedrock::Status BinaryDeserializer<Rbf2Format>::Initialize(
     std::span<const std::byte> input) & {
   impl_ = std::make_unique<Impl>(
-      impl_->MachineId(),
       std::string_view(reinterpret_cast<const char*>(input.data()),
                        input.size()));
   return impl_->ApiStatus();

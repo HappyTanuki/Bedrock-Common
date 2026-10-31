@@ -17,8 +17,10 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <ios>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <set>
@@ -215,12 +217,18 @@ void ExpectDataEq(const Data& actual, const Data& expected) {
 
 /** @brief 스키마를 YAML로 파일에 직렬화한다(산출물 .yaml 보존). */
 template <typename T>
-void SerializeToFile(const std::string& path, T& value) {
-  YAMLSerializer serializer(0);
-  ASSERT_TRUE(serializer.Dump(value).Ok());
+bool SerializeToFile(const std::string& path, T& value) {
+  YAMLSerializer serializer;
+  if (const auto status = serializer.Dump(value); status.Failed()) {
+    return false;
+  }
   const std::string_view output = serializer.Output();
   std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+  if (!ofs.is_open()) {
+    return false;
+  }
   ofs.write(output.data(), static_cast<std::streamsize>(output.size()));
+  return ofs.good();
 }
 
 /** @brief YAML 파일을 스키마로 역직렬화한다(상태를 반환). */
@@ -228,11 +236,19 @@ template <typename T>
 test_support::OwnedStatus DeserializeFromFile(const std::string& path,
                                               T& value) {
   std::ifstream ifs(path, std::ios::binary | std::ios::ate);
+  if (!ifs.is_open()) {
+    return {bedrock::ErrorCode::kError, 0, "Unable to open archive file: " + path};
+  }
   const std::streamsize size = ifs.tellg();
+  if (size < 0) {
+    return {bedrock::ErrorCode::kError, 0, "Unable to determine archive file size: " + path};
+  }
   std::string input(static_cast<std::size_t>(size), '\0');
   ifs.seekg(0, std::ios::beg);
-  ifs.read(input.data(), size);
-  YAMLDeserializer deserializer(0, input);
+  if (!ifs.read(input.data(), size)) {
+    return {bedrock::ErrorCode::kError, 0, "Unable to read archive file: " + path};
+  }
+  YAMLDeserializer deserializer(input);
   return test_support::CopyStatus(deserializer.Load(value));
 }
 
@@ -295,7 +311,7 @@ TEST(ArchiveRepresentDumpLoadConstruct, AllScalarAndContainerTypes) {
   original.escaped_text = escaped_sample;
   original.binary_data = all_byte_values;
 
-  SerializeToFile("archive_all_types.yaml", original);
+  ASSERT_TRUE(SerializeToFile("archive_all_types.yaml", original));
 
   Data decoded{};
   const test_support::OwnedStatus status =
@@ -338,7 +354,7 @@ struct MappingRows : public Schema {
 TEST(ArchiveRepresentDumpLoadConstruct, SequenceOfMappings) {
   MappingRows original;
   original.rows = {{{"a", 1}, {"b", 2}}, {{"c", 3}}};
-  SerializeToFile("archive_seq_of_maps.yaml", original);
+  ASSERT_TRUE(SerializeToFile("archive_seq_of_maps.yaml", original));
   MappingRows decoded;
   const test_support::OwnedStatus status =
       DeserializeFromFile("archive_seq_of_maps.yaml", decoded);
@@ -365,13 +381,42 @@ TEST(ArchiveRepresentDumpLoadConstruct, ManySmallNodesRoundTrip) {
          {"label_hash", static_cast<std::int32_t>(index * 31U)}});
   }
 
-  SerializeToFile("archive_node_heavy.yaml", original);
+  // This fixed path is an artifact owned by this test. Remove any prior run's
+  // file so the failure-path assertion is independent of execution history.
+  constexpr char kArchivePath[] = "archive_node_heavy.yaml";
+  std::error_code remove_error;
+  std::filesystem::remove(kArchivePath, remove_error);
+  ASSERT_FALSE(remove_error) << remove_error.message();
+
+  // Keep serialization status intact: this workload may exhaust the Snowflake
+  // sequence before a YAML document can be produced.
+  YAMLSerializer serializer;
+  const bedrock::Status dump_status = serializer.Dump(original);
+  if (dump_status.Failed()) {
+    EXPECT_EQ(dump_status.code,
+              bedrock::ErrorCode::kSnowflakeSequenceExhausted)
+        << dump_status.Message();
+    EXPECT_EQ(dump_status.code, static_cast<bedrock::ErrorCode>(0x10F));
+    EXPECT_TRUE(serializer.Output().empty());
+    EXPECT_FALSE(std::ifstream(kArchivePath, std::ios::binary).good());
+    return;
+  }
+
+  const std::string_view output = serializer.Output();
+  {
+    std::ofstream ofs(kArchivePath, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(ofs.is_open());
+    ofs.write(output.data(), static_cast<std::streamsize>(output.size()));
+    ASSERT_TRUE(ofs.good());
+  }
 
   NodeHeavyData decoded;
   const test_support::OwnedStatus status =
-      DeserializeFromFile("archive_node_heavy.yaml", decoded);
+      DeserializeFromFile(kArchivePath, decoded);
   ASSERT_TRUE(status.Ok()) << status.Message();
   EXPECT_EQ(decoded.nodes, original.nodes);
+  std::filesystem::remove(kArchivePath, remove_error);
+  EXPECT_FALSE(remove_error) << remove_error.message();
 }
 
 /** @brief 임의 문자열 키 맵 테스트용 스키마. */
@@ -386,7 +431,7 @@ TEST(ArchiveRepresentDumpLoadConstruct, ArbitraryMapKeysAreQuoted) {
                       {"colon: inside", 2},
                       {"한글 키", 3},
                       {"- leading dash", 4}};
-  SerializeToFile("archive_map_keys.yaml", original);
+  ASSERT_TRUE(SerializeToFile("archive_map_keys.yaml", original));
   StringKeyMap decoded;
   const test_support::OwnedStatus status =
       DeserializeFromFile("archive_map_keys.yaml", decoded);
@@ -408,7 +453,7 @@ TEST(ArchiveRepresentDumpLoadConstruct, SetsRoundTripAsSequences) {
   SetCollection original;
   original.tags = {"alpha", "beta", "감마"};
   original.ids = {7, -3, 2026};
-  SerializeToFile("archive_sets.yaml", original);
+  ASSERT_TRUE(SerializeToFile("archive_sets.yaml", original));
   SetCollection decoded;
   const test_support::OwnedStatus status =
       DeserializeFromFile("archive_sets.yaml", decoded);
@@ -428,7 +473,12 @@ TEST(ArchiveRepresentDumpLoadConstruct, MultimapKeepsDuplicateKeys) {
   original.mapping = {{"k", 1},
                       {"k", 2},  // 표현 트리가 중복 키와 순서를 보존
                       {"x", 9}};
-  SerializeToFile("archive_multimap.yaml", original);
+  ASSERT_TRUE(SerializeToFile("archive_multimap.yaml", original));
+  std::ifstream stream("archive_multimap.yaml", std::ios::binary);
+  ASSERT_TRUE(stream.is_open());
+  const std::string yaml{std::istreambuf_iterator<char>(stream),
+                         std::istreambuf_iterator<char>()};
+  EXPECT_NE(yaml.find("!!pairs"), std::string::npos) << yaml;
   DuplicateKeyMap decoded;
   const test_support::OwnedStatus status =
       DeserializeFromFile("archive_multimap.yaml", decoded);

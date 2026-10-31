@@ -142,7 +142,7 @@ void FillExtreme(Data& decoded) {
 
 template <typename T>
 void SerializeToFile(const std::string& path, T& value) {
-  RsfSerializer serializer(0);
+  RsfSerializer serializer;
   ASSERT_TRUE(serializer.Dump(value).Ok());
   const std::string_view output = serializer.Output();
   std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
@@ -155,7 +155,7 @@ test_support::OwnedStatus DeserializeFromFile(const std::string& path,
   std::ifstream ifs(path, std::ios::binary);
   const std::string input{std::istreambuf_iterator<char>(ifs),
                           std::istreambuf_iterator<char>()};
-  RsfDeserializer deserializer(0, input);
+  RsfDeserializer deserializer(input);
   return test_support::CopyStatus(deserializer.Load(value));
 }
 

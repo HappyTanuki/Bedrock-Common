@@ -29,6 +29,7 @@
 
 #include "archive/node.h"
 #include "common/archive/visitor.h"
+#include "common/data_types/status.h"
 
 namespace bedrock::archive::transcriber {
 
@@ -42,6 +43,14 @@ enum class TranscriberError : std::uint32_t {
   kNullStream = 2,
   /** @brief 데이터가 손상되었거나 형식이 어긋남. */
   kCorrupted = 3,
+  kSnowflakeMissingMachineId = 0x101, kSnowflakeInvalidMachineId = 0x102,
+  kSnowflakeInvalidStatePath = 0x103, kSnowflakeEnvironmentReadFailed = 0x104,
+  kSnowflakeConfigurationReadFailed = 0x105, kSnowflakeRegistryIoFailed = 0x106,
+  kSnowflakeRegistryCorrupt = 0x107, kSnowflakeRegistryIncompatible = 0x108,
+  kSnowflakeMachineIdMismatch = 0x109, kSnowflakeLockFailed = 0x10A,
+  kSnowflakeSlotsExhausted = 0x10B, kSnowflakeClockBeforeEpoch = 0x10C,
+  kSnowflakeClockOutOfRange = 0x10D, kSnowflakeClockRollback = 0x10E,
+  kSnowflakeSequenceExhausted = 0x10F, kSnowflakeUnsupportedPlatform = 0x110,
   /** @brief 그 외 일반 오류. */
   kError = 0xFFFFFFFF,
 };
@@ -51,6 +60,8 @@ enum class TranscriberError : std::uint32_t {
  * @return 국제화(i18n)된 메시지를 제공하는 정적 카테고리 인스턴스.
  */
 const std::error_category& TranscriberCategory() noexcept;
+/** Maps a Snowflake identity failure (-16..-1); all other values are generic. */
+std::error_code SnowflakeIdentityError(std::int64_t identity) noexcept;
 /**
  * @brief TranscriberError를 std::error_code로 변환한다.
  * @param error 변환할 오류 값.
@@ -79,6 +90,12 @@ struct OwnedStatus {
   }
 };
 
+/** @brief 소유 상태를 bedrock::Status와 메시지 저장소로 변환한다. */
+bedrock::Status BorrowStatus(const OwnedStatus& source,
+                             std::string& message_storage);
+/** @brief 파싱 중 손상 오류 상태를 대상 정보와 함께 만든다. */
+OwnedStatus CorruptedAt(std::string_view what);
+
 /**
  * @brief 포맷 독립적인 역직렬화기 베이스 클래스(읽기 방향, Construct).
  *
@@ -90,18 +107,18 @@ struct OwnedStatus {
  */
 class ConstructCore : public Visitor {
  public:
+  // 복사 & 이동 금지
   ConstructCore(const ConstructCore&) = delete;
   ConstructCore& operator=(const ConstructCore&) = delete;
   ConstructCore(ConstructCore&&) = delete;
   ConstructCore& operator=(ConstructCore&&) = delete;
   /**
    * @brief 역직렬화기를 생성한다(적재는 첫 방문 때 지연 수행).
-   * @param machine_id Snowflake ID 생성에 쓰이는 머신 식별자.
-   * @param input 읽어 들일 입력. caller가 ConstructCore보다 오래 소유한다.
+   * @param input 읽어 들일 입력. ConstructCore가 소유권을 넘겨받는다.
    */
-  ConstructCore(std::uint16_t machine_id, std::string_view input)
-      : Visitor(machine_id),
-        input_(input),
+  explicit ConstructCore(std::string input)
+      : Visitor(),
+        input_(std::move(input)),
         status_(make_error_code(TranscriberError::kSuccess)) {}
   /** @brief 가상 소멸자. */
   ~ConstructCore() override;
@@ -220,14 +237,6 @@ class ConstructCore : public Visitor {
   [[nodiscard]] virtual bool IsBinaryScalar(const Node& n) const = 0;
 
   /**
-   * @brief 중복 키 관대함 신호(OnDuplicateKeysBegin)를 포맷별로 반영한다.
-   *
-   * 기본 구현은 아무 것도 하지 않는다. 중복 키 검증이 존재하는 포맷
-   * (YAML 등)만 이를 재정의해 다음 LoadRepresentation부터 완화한다.
-   */
-  virtual void OnDuplicateKeysNotify() {}
-
-  /**
    * @brief 스트림이 seek 가능한지 검사한다(추정).
    * @param input_stream 검사할 입력 스트림.
    * @note 선언만 있고 정의부가 없다 — 아직 구현되지 않았다(TBD).
@@ -274,8 +283,8 @@ class ConstructCore : public Visitor {
    */
   const Node* ResolveChild(std::string_view name);
 
-  /** @brief 역직렬화 대상 입력(비소유, public Impl storage가 수명 보장). */
-  std::string_view input_;
+  /** @brief 역직렬화 대상 입력(ConstructCore가 소유). */
+  std::string input_;
   /** @brief 현재까지의 역직렬화 상태. */
   OwnedStatus status_;
 
@@ -307,11 +316,10 @@ class RepresentCore : public Visitor {
   RepresentCore& operator=(RepresentCore&&) = delete;
   /**
    * @brief 직렬화기를 생성한다.
-   * @param machine_id Snowflake ID 생성에 쓰이는 머신 식별자.
    * @param output_stream 기록할 출력 스트림.
    */
-  RepresentCore(std::uint16_t machine_id, std::ostream& output_stream)
-      : Visitor(machine_id),
+  explicit RepresentCore(std::ostream& output_stream)
+      : Visitor(),
         output_stream_(&output_stream),
         status_(make_error_code(TranscriberError::kSuccess)) {}
   /** @brief 가상 소멸자. */
@@ -360,6 +368,8 @@ class RepresentCore : public Visitor {
   std::size_t OnMapBegin(const Field& name, std::size_t count) final;
   /** @brief 맵 노드를 완성해 부모에 붙인다. */
   void OnMapEnd() final;
+  /** @brief 다음 맵이 native multi-key mapping임을 표시한다. */
+  void OnDuplicateKeysBegin() final;
   /**
    * @brief 집합 노드 구성을 시작한다(자식 = 원소).
    * @return 이미 실패 상태면 실패 sentinel, 아니면 count 그대로.
@@ -479,6 +489,8 @@ class RepresentCore : public Visitor {
   bool root_done_ = false;
   /** @brief OnRootBegin의 이름(비어 있지 않으면 {name: …}로 감싼다). */
   std::string root_name_;
+  /** @brief 다음 OnMapBegin이 native multi-key mapping인지. */
+  bool duplicate_keys_pending_ = false;
 };
 
 }  // namespace bedrock::archive::transcriber

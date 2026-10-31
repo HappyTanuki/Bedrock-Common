@@ -1,61 +1,28 @@
 /**
  * @file yaml_deserializer.cc
- * @brief YAMLDeserializer public API와 private Impl을 §3.1 Load에 연결한다.
+ * @brief YAML 텍스트를 representation으로 적재하는 TextDeserializer 구현.
  */
 #include "common/archive/transcriber/yaml_deserializer.h"
 
-#include <format>
+#include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "archive/transcriber.h"
-#include "archive/yaml/load.h"
-#include "common/i18n/locales.h"
+#include "archive/yaml/compose.h"
+#include "archive/yaml/parse.h"
 #include "common/util/unicode.h"
 
 namespace bedrock::archive::transcriber {
 
-namespace {
-
-/** @brief "…를 파싱하는 동안 손상" 상태(위치·대상 이름 포함). */
-OwnedStatus CorruptedAt(std::string_view what) {
-  const std::string_view fmt =
-      GetI18nString(locale::StringKey::kStatusCorruptedWhileParsing,
-                    locale::IsO6391::kKO, locale::IsO31661::kKR);
-  return {TranscriberError::kCorrupted,
-          std::vformat(fmt, std::make_format_args(what))};
-}
-
-/** @brief 성공 상태. */
-OwnedStatus Ok() { return {make_error_code(TranscriberError::kSuccess)}; }
-
-bedrock::Status BorrowStatus(const OwnedStatus& source,
-                             std::string& message_storage) {
-  message_storage = source.Message();
-  const bedrock::ErrorCode code =
-      source.Ok() ? bedrock::ErrorCode::kSuccess
-                  : static_cast<bedrock::ErrorCode>(source.code.value());
-  return bedrock::Status(code, message_storage);
-}
-
-struct YAMLDeserializerInput {
-  explicit YAMLDeserializerInput(std::string_view source) : input(source) {}
-  std::string input;
-};
-
-}  // namespace
-
 template <>
-struct TextDeserializer<YAMLFormat>::Impl final : private YAMLDeserializerInput,
-                                                  public ConstructCore {
-  explicit Impl(std::uint16_t id)
-      : YAMLDeserializerInput(""), ConstructCore(id, input), machine_id(id) {}
-  Impl(std::uint16_t id, std::string_view source)
-      : YAMLDeserializerInput(source),
-        ConstructCore(id, input),
-        machine_id(id) {
+struct TextDeserializer<YAMLFormat>::Impl final : public ConstructCore {
+  explicit Impl() : ConstructCore(std::string{}) {}
+  explicit Impl(std::string_view source) : ConstructCore(std::string(source)) {
     status = BorrowStatus(ConstructCore::Load(), error_storage);
     initialized = status.Ok();
   }
@@ -75,7 +42,6 @@ struct TextDeserializer<YAMLFormat>::Impl final : private YAMLDeserializerInput,
     return status;
   }
 
-  std::uint16_t machine_id;
   std::string error_storage;
   bedrock::Status status = bedrock::Status(bedrock::ErrorCode::kNotReady);
   bool initialized = false;
@@ -84,50 +50,54 @@ struct TextDeserializer<YAMLFormat>::Impl final : private YAMLDeserializerInput,
  private:
   OwnedStatus LoadRepresentation(std::string_view input, Node& out) final;
   [[nodiscard]] bool IsBinaryScalar(const Node& node) const final;
-  void OnDuplicateKeysNotify() final;
 };
 
 TextDeserializer<YAMLFormat>::Impl::~Impl() = default;
 
-void TextDeserializer<YAMLFormat>::Impl::OnDuplicateKeysNotify() {
-  // multimap 등 중복 키가 의미 있는 스키마다. YAML Load는 중복 쌍을
-  // 보존해 적재하고(아래), 유일성 강제는 베이스 Construct가 컨테이너
-  // 종류를 보고 판단한다 — 이 신호는 문서화용 마커로 둔다.
-}
-
 OwnedStatus TextDeserializer<YAMLFormat>::Impl::LoadRepresentation(
     std::string_view input, Node& out) {
-  std::vector<std::uint32_t> buf;
-  if (!util::DecodeUtf8(input, buf)) {
+  std::vector<std::uint32_t> code_points;
+  if (!util::DecodeUtf8(input, code_points)) {
     return CorruptedAt("UTF-8");
   }
 
-  // 중복 쌍을 일단 보존해 적재한다 — 유일성 강제는 Construct 단계에서
-  // 목표 컨테이너(map vs multimap)를 알 때 수행된다.
-  yaml::ComposeOptions options;
-  options.allow_duplicate_keys = true;
-  yaml::ComposeResult loaded = yaml::Load(buf, options);
-  if (!loaded.ok) {
-    return CorruptedAt(loaded.error);
+  yaml::ComposeEventBuilder builder;
+  std::string parse_error;
+  const bool parsed = yaml::Parse(std::span<const std::uint32_t>(code_points),
+                                  builder, parse_error);
+  yaml::ComposeResult composed = builder.Finish();
+  if (!parsed) {
+    if (composed.identity_error < 0) {
+      return {SnowflakeIdentityError(composed.identity_error),
+              "Snowflake identity error"};
+    }
+    return CorruptedAt(composed.error.empty() ? parse_error : composed.error);
   }
-  if (loaded.docs.empty()) {
+  if (!composed.ok) {
+    if (composed.identity_error < 0) {
+      return {SnowflakeIdentityError(composed.identity_error),
+              "Snowflake identity error"};
+    }
+    return CorruptedAt(composed.error);
+  }
+  if (composed.docs.empty()) {
     return CorruptedAt("empty document");
   }
-  out = std::move(loaded.docs.front());
-  return Ok();
+  out = std::move(composed.docs.front());
+  return {make_error_code(TranscriberError::kSuccess)};
 }
 
-bool TextDeserializer<YAMLFormat>::Impl::IsBinaryScalar(const Node& n) const {
-  return n.tag == "!!binary";
+bool TextDeserializer<YAMLFormat>::Impl::IsBinaryScalar(
+    const Node& node) const {
+  return node.tag == "!!binary";
 }
 
 template <>
-TextDeserializer<YAMLFormat>::TextDeserializer(std::uint16_t machine_id)
-    : impl_(std::make_unique<Impl>(machine_id)) {}
+TextDeserializer<YAMLFormat>::TextDeserializer()
+    : impl_(std::make_unique<Impl>()) {}
 template <>
-TextDeserializer<YAMLFormat>::TextDeserializer(std::uint16_t machine_id,
-                                               std::string_view input)
-    : impl_(std::make_unique<Impl>(machine_id, input)) {}
+TextDeserializer<YAMLFormat>::TextDeserializer(std::string_view input)
+    : impl_(std::make_unique<Impl>(input)) {}
 template <>
 TextDeserializer<YAMLFormat>::~TextDeserializer() {}
 template <>
@@ -139,7 +109,7 @@ TextDeserializer<YAMLFormat>& TextDeserializer<YAMLFormat>::operator=(
 template <>
 bedrock::Status TextDeserializer<YAMLFormat>::Initialize(
     std::string_view input) & {
-  impl_ = std::make_unique<Impl>(impl_->machine_id, input);
+  impl_ = std::make_unique<Impl>(input);
   return impl_->status;
 }
 template <>

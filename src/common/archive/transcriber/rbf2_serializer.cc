@@ -22,21 +22,12 @@ namespace bedrock::archive::transcriber {
 namespace {
 constexpr std::array<std::uint8_t, 4> kMagic = {0x52, 0x46, 0x32, 0x01};
 
-bedrock::Status BorrowStatus(const OwnedStatus& source,
-                             std::string& message_storage) {
-  message_storage = source.Message();
-  const bedrock::ErrorCode code =
-      source.Ok() ? bedrock::ErrorCode::kSuccess
-                  : static_cast<bedrock::ErrorCode>(source.code.value());
-  return bedrock::Status(code, message_storage);
-}
 }  // namespace
 
 template <>
 struct BinarySerializer<Rbf2Format>::Impl final : public Visitor {
  public:
-  explicit Impl(std::uint16_t id)
-      : Visitor(id), stream(std::ios::binary), out_(&stream), machine_id(id) {}
+  Impl() : Visitor(), stream(std::ios::binary), out_(&stream) {}
   ~Impl() override;
 
   bedrock::Status Run(bedrock::archive::Schema& schema, std::string_view name);
@@ -77,7 +68,6 @@ struct BinarySerializer<Rbf2Format>::Impl final : public Visitor {
   std::string output;
   std::string error_storage;
   bedrock::Status status = bedrock::Status(bedrock::ErrorCode::kSuccess);
-  std::uint16_t machine_id;
   bool consumed = false;
 
  private:
@@ -301,8 +291,8 @@ Visitor& BinarySerializer<Rbf2Format>::Impl::Visit(const Field& field,
 }
 
 template <>
-BinarySerializer<Rbf2Format>::BinarySerializer(std::uint16_t machine_id)
-    : impl_(std::make_unique<Impl>(machine_id)) {}
+BinarySerializer<Rbf2Format>::BinarySerializer()
+    : impl_(std::make_unique<Impl>()) {}
 template <>
 BinarySerializer<Rbf2Format>::~BinarySerializer() {}
 template <>
@@ -313,7 +303,7 @@ BinarySerializer<Rbf2Format>& BinarySerializer<Rbf2Format>::operator=(
     BinarySerializer&&) noexcept = default;
 template <>
 void BinarySerializer<Rbf2Format>::Reset() & {
-  impl_ = std::make_unique<Impl>(impl_->machine_id);
+  impl_ = std::make_unique<Impl>();
 }
 template <>
 bedrock::Status BinarySerializer<Rbf2Format>::Dump(

@@ -80,15 +80,6 @@ void WriteNode(std::ostream& output_stream, const Node& n) {
   }
 }
 
-bedrock::Status BorrowStatus(const OwnedStatus& source,
-                             std::string& message_storage) {
-  message_storage = source.Message();
-  const bedrock::ErrorCode code =
-      source.Ok() ? bedrock::ErrorCode::kSuccess
-                  : static_cast<bedrock::ErrorCode>(source.code.value());
-  return bedrock::Status(code, message_storage);
-}
-
 struct RbfSerializerOutput {
   std::ostringstream stream{std::ios::binary};
 };
@@ -98,7 +89,7 @@ struct RbfSerializerOutput {
 template <>
 struct BinarySerializer<RbfFormat>::Impl final : private RbfSerializerOutput,
                                                  public RepresentCore {
-  explicit Impl(std::uint16_t id) : RepresentCore(id, stream), machine_id(id) {}
+  explicit Impl() : RepresentCore(stream) {}
   ~Impl() override;
 
   bedrock::Status Run(bedrock::archive::Schema& schema, std::string_view name) {
@@ -124,7 +115,6 @@ struct BinarySerializer<RbfFormat>::Impl final : private RbfSerializerOutput,
     return status;
   }
 
-  std::uint16_t machine_id;
   std::string output;
   std::string error_storage;
   bedrock::Status status = bedrock::Status(bedrock::ErrorCode::kSuccess);
@@ -149,8 +139,8 @@ OwnedStatus BinarySerializer<RbfFormat>::Impl::DumpRepresentation(
 }
 
 template <>
-BinarySerializer<RbfFormat>::BinarySerializer(std::uint16_t machine_id)
-    : impl_(std::make_unique<Impl>(machine_id)) {}
+BinarySerializer<RbfFormat>::BinarySerializer()
+    : impl_(std::make_unique<Impl>()) {}
 template <>
 BinarySerializer<RbfFormat>::~BinarySerializer() {}
 template <>
@@ -161,7 +151,7 @@ BinarySerializer<RbfFormat>& BinarySerializer<RbfFormat>::operator=(
     BinarySerializer&&) noexcept = default;
 template <>
 void BinarySerializer<RbfFormat>::Reset() & {
-  impl_ = std::make_unique<Impl>(impl_->machine_id);
+  impl_ = std::make_unique<Impl>();
 }
 template <>
 bedrock::Status BinarySerializer<RbfFormat>::Dump(

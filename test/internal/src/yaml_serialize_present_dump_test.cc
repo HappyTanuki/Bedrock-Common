@@ -2,16 +2,26 @@
 
 #include <string>
 
-#include "archive/yaml/dump.h"
-#include "archive/yaml/load.h"
+#include "archive/yaml/compose.h"
+#include "archive/yaml/parse.h"
 #include "archive/yaml/present.h"
 #include "archive/yaml/serialize.h"
 
 namespace {
 
+bedrock::archive::yaml::ComposeResult LoadRepresentation(
+    std::u32string_view presentation) {
+  const bedrock::archive::yaml::ParseResult parsed =
+      bedrock::archive::yaml::Parse(presentation);
+  if (!parsed.ok) {
+    return {false, parsed.error, {}};
+  }
+  return bedrock::archive::yaml::Compose(parsed.serialization);
+}
+
 TEST(YamlSerializePresentDump, DumpIsSerializeThenPresent) {
   const bedrock::archive::yaml::ComposeResult loaded =
-      bedrock::archive::yaml::Load(U"value: \"text\"\n");
+      LoadRepresentation(U"value: \"text\"\n");
   ASSERT_TRUE(loaded.ok) << loaded.error;
   ASSERT_EQ(loaded.docs.size(), 1U);
 
@@ -20,7 +30,8 @@ TEST(YamlSerializePresentDump, DumpIsSerializeThenPresent) {
   const bedrock::archive::yaml::PresentResult presented =
       bedrock::archive::yaml::Present(serialized);
   const bedrock::archive::yaml::PresentResult dumped =
-      bedrock::archive::yaml::Dump(loaded.docs.front());
+      bedrock::archive::yaml::Present(
+          bedrock::archive::yaml::Serialize(loaded.docs.front()));
 
   ASSERT_TRUE(presented.ok) << presented.error;
   ASSERT_TRUE(dumped.ok) << dumped.error;
@@ -30,8 +41,7 @@ TEST(YamlSerializePresentDump, DumpIsSerializeThenPresent) {
 
 TEST(YamlSerializePresentDump, SerializeTurnsSharedIdentityIntoAnchorAndAlias) {
   const bedrock::archive::yaml::ComposeResult loaded =
-      bedrock::archive::yaml::Load(
-          U"original: &source value\nalias: *source\n");
+      LoadRepresentation(U"original: &source value\nalias: *source\n");
   ASSERT_TRUE(loaded.ok) << loaded.error;
 
   const bedrock::archive::yaml::SerializationStream serialized =
@@ -50,14 +60,14 @@ TEST(YamlSerializePresentDump, SerializeTurnsSharedIdentityIntoAnchorAndAlias) {
   const bedrock::archive::yaml::PresentResult presented =
       bedrock::archive::yaml::Present(serialized);
   ASSERT_TRUE(presented.ok) << presented.error;
-  const bedrock::archive::yaml::ComposeResult reloaded =
-      bedrock::archive::yaml::Load(
-          std::u32string(presented.text.begin(), presented.text.end()));
+  const bedrock::archive::yaml::ComposeResult reloaded = LoadRepresentation(
+      std::u32string(presented.text.begin(), presented.text.end()));
   ASSERT_TRUE(reloaded.ok) << reloaded.error;
   ASSERT_NE(reloaded.docs.front().Find("original"), nullptr);
   ASSERT_NE(reloaded.docs.front().Find("alias"), nullptr);
-  EXPECT_TRUE(reloaded.docs.front().Find("original")->SameIdentity(
-      *reloaded.docs.front().Find("alias")));
+  EXPECT_TRUE(reloaded.docs.front()
+                  .Find("original")
+                  ->SameIdentity(*reloaded.docs.front().Find("alias")));
 }
 
 }  // namespace

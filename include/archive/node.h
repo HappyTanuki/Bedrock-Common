@@ -8,20 +8,17 @@
  * 제시(Presentation) 정보 — 따옴표·들여쓰기·토큰 — 는 담지 않는다.
  */
 #pragma once
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "common/data_types/snowflake.h"
+
 namespace bedrock::archive::transcriber {
 
-/** @brief process-local representation identity를 allocation 없이 발급한다. */
-inline std::uint64_t NextNodeIdentity() noexcept {
-  static std::atomic<std::uint64_t> next{1};
-  return next.fetch_add(1, std::memory_order_relaxed);
-}
+
 
 /**
  * @brief 스칼라/컨테이너 값의 종류를 나타내는 비트 플래그.
@@ -124,9 +121,11 @@ struct Node {
   };
 
   /** @brief 값 복사본 사이에서도 공유되는 representation identity token. */
-  std::uint64_t identity = NextNodeIdentity();
+  std::int64_t identity = bedrock::Snowflake::Generate();
   /** @brief 노드의 종류. */
   Kind kind = Kind::kScalar;
+  /** @brief 중복 키 의미를 보존하는 native multi-key mapping인지. */
+  bool duplicate_keys = false;
   /** @brief 빈(e-node) 스칼라 여부 — ""(빈 문자열)과 null을 구분한다. */
   bool null = false;
   /** @brief 태그 원문("!!binary" 등). 없으면 빈 문자열. */
@@ -159,9 +158,12 @@ struct Node {
   [[nodiscard]] const Node* Find(std::string_view key) const;
   /** @brief 두 값이 representation graph의 같은 노드를 가리키는지 검사한다. */
   [[nodiscard]] bool SameIdentity(const Node& other) const noexcept {
-    return identity == other.identity;
+    return identity >= 0 && other.identity >= 0 && identity == other.identity;
   }
 };
+
+/** @brief Returns the first negative identity in the complete tree, or zero. */
+[[nodiscard]] std::int64_t FindIdentityError(const Node& node) noexcept;
 
 /** @brief 매핑 항목 하나 — 키/값 모두 완전한 Node. */
 struct Node::Pair {

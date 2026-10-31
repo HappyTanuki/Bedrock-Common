@@ -26,9 +26,15 @@ set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(googletest)
 set(BUILD_SHARED_LIBS "${_saved_BUILD_SHARED_LIBS}")
 
+# GoogleTest does not link Common, so its own compilation closures carry the
+# language level and source encoding explicitly.
+foreach(_gtest_target IN ITEMS gtest gtest_main)
+    target_link_libraries(${_gtest_target} PRIVATE _BedrockBuildConfig::Cxx23 _BedrockBuildConfig::Utf8)
+    _BedrockBuildConfig_set_language_properties(${_gtest_target})
+endforeach()
 if(NOT WIN32)
-    target_compile_options(gtest PRIVATE -fno-exceptions -fno-rtti)
-    target_compile_options(gtest_main PRIVATE -fno-exceptions -fno-rtti)
+    target_link_libraries(gtest PRIVATE _BedrockBuildConfig::NoExceptions _BedrockBuildConfig::NoRtti _BedrockBuildConfig::TestWarnings)
+    target_link_libraries(gtest_main PRIVATE _BedrockBuildConfig::NoExceptions _BedrockBuildConfig::NoRtti _BedrockBuildConfig::TestWarnings)
 endif()
 
 include(GoogleTest)

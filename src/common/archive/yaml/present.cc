@@ -19,7 +19,7 @@ namespace {
  *
  * 이 집합 밖의 코드포인트(C0/DEL/C1 제어 문자, 비문자, 서로게이트)는
  * 이스케이프한다. PyYAML의 허용 집합과 동일하다.
- * @param cp 검사할 유니코드 코드포인트.
+ * @param code_point 검사할 유니코드 코드포인트.
  * @return 인쇄 가능하면 true.
  */
 bool IsYamlPrintable(char32_t code_point) {
@@ -35,7 +35,7 @@ bool IsYamlPrintable(char32_t code_point) {
 
 /**
  * @brief YAML(1.1)이 줄바꿈으로 취급하는 문자인지 검사한다.
- * @param cp 검사할 유니코드 코드포인트.
+ * @param code_point 검사할 유니코드 코드포인트.
  * @return LF/CR/NEL/LS/PS 중 하나면 true.
  */
 bool IsYamlLineBreak(char32_t code_point) {
@@ -47,10 +47,10 @@ bool IsYamlLineBreak(char32_t code_point) {
  * @brief YAML 이중 인용(double-quoted) 스칼라용으로 이스케이프한다.
  *
  * \ 와 " 및 비인쇄 문자만 이스케이프한다. double-quoted는
- * \xNN/\uNNNN/\UNNNNNNNN 으로 모든 코드포인트를 표현할 수 있으므로
+ * xNN, uNNNN, and UNNNNNNNN escape forms can represent every code point, so
  * 버리지 않고 이스케이프해 왕복을 보장한다. NEL/LS/PS도 줄 접힘을
  * 피하려 이스케이프한다.
- * @param in 원본 바이트열(UTF-8).
+ * @param input 원본 바이트열(UTF-8).
  * @return 이스케이프된 문자열.
  */
 std::string EscapeForDoubleQuoted(std::string_view input) {
@@ -127,6 +127,9 @@ bool IsItemContainer(const SerializationNode& node) {
 class Presenter {
  public:
   PresentResult Run(const SerializationStream& serialization) {
+    if (serialization.identity_error < 0) {
+      return {false, "Snowflake identity error", {}};
+    }
     if (serialization.documents.empty()) {
       return {false, "serialization stream has no document", {}};
     }
@@ -185,6 +188,9 @@ class Presenter {
     }
     if (!node.anchor.empty()) {
       output_ << " &" << node.anchor;
+    }
+    if (!node.tag.empty()) {
+      output_ << ' ' << node.tag;
     }
     if (node.kind == SerializationNode::Kind::kMapping && node.pairs.empty()) {
       output_ << " {}\n";

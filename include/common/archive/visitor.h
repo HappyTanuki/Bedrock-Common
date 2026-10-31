@@ -136,6 +136,7 @@ struct Field {
  */
 class Visitor {
  public:
+  // 복사 & 이동 금지
   Visitor(const Visitor&) = delete;
   Visitor& operator=(const Visitor&) = delete;
   Visitor(Visitor&&) = delete;
@@ -144,7 +145,7 @@ class Visitor {
    * @brief machine_id로 Visitor를 생성한다.
    * @param machine_id Snowflake ID 생성에 쓰이는 머신 식별자.
    */
-  explicit Visitor(std::uint16_t machine_id) : machine_id_(machine_id) {}
+  Visitor() = default;
   /** @brief 가상 소멸자. */
   virtual ~Visitor();
 
@@ -519,12 +520,11 @@ class Visitor {
            ...);
   }
 
-  [[nodiscard]] std::uint16_t MachineId() const { return machine_id_; }
+
   [[nodiscard]] std::size_t IndentSize() const { return indent_size_; }
 
  private:
-  /** @brief Snowflake ID 생성에 쓰이는 머신 식별자. */
-  std::uint16_t machine_id_;
+
 
   /** @brief 포맷 출력 시 사용하는 들여쓰기 폭(공백 수). */
   std::size_t indent_size_ = 2;

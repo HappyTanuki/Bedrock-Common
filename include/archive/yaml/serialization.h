@@ -45,6 +45,7 @@ struct SerializationNode::Pair {
 /** @brief 문서 순서를 보존하는 YAML serialization stream. */
 struct SerializationStream {
   std::vector<SerializationNode> documents;
+  std::int64_t identity_error = 0;
 };
 
 /** @brief presentation decoding 뒤의 serialization event 종류. */
@@ -67,7 +68,7 @@ struct SerializationEvent {
 /** @brief serialization event를 순서대로 소비하는 내부 sink. */
 class SerializationSink {
  public:
-  virtual ~SerializationSink() = default;
+  virtual ~SerializationSink();
   virtual bool OnEvent(SerializationEvent&& event) = 0;
 };
 

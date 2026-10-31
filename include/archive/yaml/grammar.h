@@ -1,17 +1,16 @@
 /**
  * @file
- * @brief YAML 1.2.2 문법(파서/인식기) 선언.
+ * @brief YAML 1.2.2 문법 인식기와 구문 후보를 선언한다.
  *
- * yaml.org 스펙 1.2.2의 BNF 프로덕션 [1]~[211]을 함수/상수로 그대로
- * 옮긴 것이다. 함수명은 IsX_y_z <-> 프로덕션 x-y-z 규칙을 따르며(예:
- * Isc_printable <-> c-printable, Iss_l_block_node <-> s-l+block-node),
- * 각 선언 앞의 `[NN]` 주석이 해당 프로덕션 번호다. 컨텍스트 c(BLOCK-IN
- * /OUT/KEY, FLOW-IN/OUT/KEY)와 chomping 모드 t(STRIP/CLIP/KEEP)는 각각
- * State/ChompingState 패턴의 파생 클래스로 표현한다.
+ * 프로덕션 [1]-[211]을 함수와 상수로 옮겼다. 함수 이름은 `Is`와 프로덕션
+ * 접두사 및 CamelCase 이름을 조합한다(예: `IssLBlockNode` <->
+ * `s-l+block-node`). `[NNN]` 주석은 규칙 번호를 나타내며, 문법 컨텍스트는
+ * `State`와 `ChompingState`로 표현한다.
  *
- * 저수준 bool 프로덕션은 입력을 인식하며 Parse는 그 결과를 구문 트리로 만든다.
- * Parse 내부 이벤트는 별도 TU의 BuildEvents visitor가 구문 트리로부터 만든다.
- * 진단(Diag)을 연결하면 가장 깊이 도달한 오프셋을 추적한다.
+ * 프로덕션은 `OpenNode`, `CloseNode`, `AddNode`로 파스 세션 arena에 구문 후보를
+ * 기록한다. parse.cc는 전체 입력 소비를 확인하고 `[211] IslYamlStream`을
+ * 조정한 뒤 `Materialize`로 구문 노드를 만들고 `EventEmitter`로 이벤트를
+ * 방출한다. `Diag`는 가장 멀리 도달한 오프셋을 기록한다.
  */
 #pragma once
 #include <cstddef>
@@ -137,11 +136,10 @@ class Grammar {
 
   // ── 헬퍼 (스펙 프로덕션 아님) ─────────────────────────────────────
   /**
-   * @brief 커서를 repetition_count 코드포인트만큼 전진(분할점을 앞으로 이동).
-   * diag가 있으면 최심 도달 오프셋을 갱신한다. repetition_count만큼 전진을
-   * 보장하지는 않는다.
+   * @brief 커서를 count개 코드포인트만큼 전진(분할점을 앞으로 이동).
+   * diag가 있으면 최심 도달 오프셋을 갱신한다.
    */
-  static void Advance(ParseState& cur, std::size_t repetition_count) noexcept;
+  static void Advance(ParseState& cur, std::size_t count) noexcept;
 
   /** @brief 완성된 node를 현재 열린 frame의 child 또는 root에 추가한다. */
   static void AddNode(ParseState& cur, SyntaxNode node);
@@ -163,12 +161,11 @@ class Grammar {
   static void CloseNode(ParseState& cur, std::size_t end);
 
   /**
-   * @brief cps의 repetition_index번째 코드포인트(현재 위치 기준
-   * repetition_index칸 앞). 범위 밖(EOF)이면 0(0은 c-printable이 아니므로
-   * 안전).
+   * @brief cps의 index번째 코드포인트(현재 위치 기준 index칸 앞).
+   * 범위 밖(EOF)이면 0을 반환한다.
    */
   static std::uint32_t At(std::span<const std::uint32_t> cps,
-                          std::size_t repetition_index) noexcept;
+                          std::size_t index) noexcept;
   /**
    * @brief cps의 subspan을 범위를 체크하며 생성.
    * 범위 밖이라면 {}를 반환한다.
@@ -182,9 +179,9 @@ class Grammar {
   static std::span<const std::uint32_t> Subspan(
       std::span<const std::uint32_t> cps, std::size_t offset,
       std::size_t count) noexcept;
-  /** @brief cps의 repetition_index번째 위치가 버퍼 끝(EOF)인지. */
+  /** @brief cps의 index번째 위치가 버퍼 끝(EOF)인지. */
   static bool AtEnd(std::span<const std::uint32_t> cps,
-                    std::size_t repetition_index) noexcept;
+                    std::size_t index) noexcept;
   /**
    * @brief <start-of-line>: 버퍼 시작이거나 직전 줄바꿈이 완결된 위치
    * (CRLF 중간 제외). before(lookbehind)와 cps(전방 1자)로 판정한다.

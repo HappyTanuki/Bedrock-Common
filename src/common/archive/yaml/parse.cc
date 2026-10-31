@@ -1,6 +1,6 @@
 /**
  * @file parse.cc
- * @brief YAML presentation stream을 serialization tree로 Parse한다.
+ * @brief YAML presentation을 Parse해 serialization event 또는 tree를 만든다.
  */
 #include "archive/yaml/parse.h"
 
@@ -48,10 +48,10 @@ std::vector<RawLine> SplitLines(std::span<const std::uint32_t> cps) {
   std::size_t start = 0;
   std::size_t index = 0;
   while (index < cps.size()) {
-    const std::size_t byte_value = BreakLen(cps, index);
-    if (byte_value != 0U) {
+    const std::size_t break_length = BreakLen(cps, index);
+    if (break_length != 0U) {
       lines.push_back({cps.subspan(start, index - start), true});
-      index += byte_value;
+      index += break_length;
       start = index;
     } else {
       index++;
@@ -64,17 +64,17 @@ std::vector<RawLine> SplitLines(std::span<const std::uint32_t> cps) {
 /** @brief 앞뒤 공백류를 잘라낸 구간(선두는 strip_lead일 때만). */
 std::span<const std::uint32_t> Trim(std::span<const std::uint32_t> scalar,
                                     bool strip_lead) {
-  std::size_t byte_value = 0;
-  std::size_t event = scalar.size();
+  std::size_t begin = 0;
+  std::size_t end = scalar.size();
   if (strip_lead) {
-    while (byte_value < event && IsWhite(scalar[byte_value])) {
-      byte_value++;
+    while (begin < end && IsWhite(scalar[begin])) {
+      begin++;
     }
   }
-  while (event > byte_value && IsWhite(scalar[event - 1])) {
-    event--;
+  while (end > begin && IsWhite(scalar[end - 1])) {
+    end--;
   }
-  return scalar.subspan(byte_value, event - byte_value);
+  return scalar.subspan(begin, end - begin);
 }
 
 /**
@@ -87,28 +87,28 @@ std::string DecodeFlowFolded(std::span<const std::uint32_t> cps,
                              bool single_quoted) {
   const std::vector<RawLine> lines = SplitLines(cps);
   std::string out;
-  auto append_line = [&](std::span<const std::uint32_t> length) {
-    for (std::size_t index = 0; index < length.size();) {
-      if (single_quoted && length[index] == '\'' && index + 1 < length.size() &&
-          length[index + 1] == '\'') {
+  auto append_line = [&](std::span<const std::uint32_t> line_text) {
+    for (std::size_t index = 0; index < line_text.size();) {
+      if (single_quoted && line_text[index] == '\'' &&
+          index + 1 < line_text.size() && line_text[index + 1] == '\'') {
         out += '\'';
         index += 2;
         continue;
       }
-      util::AppendUtf8(out, static_cast<char32_t>(length[index]));
+      util::AppendUtf8(out, static_cast<char32_t>(line_text[index]));
       index++;
     }
   };
   bool first = true;
   std::size_t pending_empties = 0;
   for (const auto& line : lines) {
-    const std::span<const std::uint32_t> length = Trim(line.text, !first);
+    const std::span<const std::uint32_t> line_text = Trim(line.text, !first);
     if (first) {
-      append_line(length);
+      append_line(line_text);
       first = false;
       continue;
     }
-    if (length.empty()) {
+    if (line_text.empty()) {
       pending_empties++;
       continue;
     }
@@ -118,7 +118,7 @@ std::string DecodeFlowFolded(std::span<const std::uint32_t> cps,
     } else {
       out += ' ';
     }
-    append_line(length);
+    append_line(line_text);
   }
   return out;  // 구간은 내용으로 끝나므로 후행 빈 행은 없다
 }
@@ -127,8 +127,10 @@ std::string DecodeFlowFolded(std::span<const std::uint32_t> cps,
 char32_t ReadHex(std::span<const std::uint32_t> cps, std::size_t index,
                  std::size_t digits) {
   std::uint32_t value = 0;
-  for (std::size_t key = 0; key < digits && index + key < cps.size(); key++) {
-    const std::uint32_t character = cps[index + key];
+  for (std::size_t digit_index = 0;
+       digit_index < digits && index + digit_index < cps.size();
+       digit_index++) {
+    const std::uint32_t character = cps[index + digit_index];
     std::uint32_t digit = 0;
     if ('0' <= character && character <= '9') {
       digit = character - '0';
@@ -188,9 +190,9 @@ std::string DecodeDouble(std::span<const std::uint32_t> cps) {
   };
 
   for (std::size_t index = 0; index < cps.size();) {
-    if (const std::size_t block_length = BreakLen(cps, index)) {
+    if (const std::size_t break_length = BreakLen(cps, index)) {
       append(U'\n', false);
-      index += block_length;
+      index += break_length;
       continue;
     }
     if (cps[index] != '\\') {
@@ -198,8 +200,7 @@ std::string DecodeDouble(std::span<const std::uint32_t> cps) {
       index++;
       continue;
     }
-    const std::uint32_t first_character =
-        index + 1 < cps.size() ? cps[index + 1] : 0;
+    const std::uint32_t escape = index + 1 < cps.size() ? cps[index + 1] : 0;
     if (BreakLen(cps, index + 1) != 0U) {  // 이스케이프된 줄바꿈
       // 앞의 원시 공백은 내용으로 보존하고 다음 행의 들여쓰기는 제거한다.
       raw_ws = 0;
@@ -210,7 +211,7 @@ std::string DecodeDouble(std::span<const std::uint32_t> cps) {
     }
     char32_t code_point = 0;
     std::size_t len = 2;
-    switch (first_character) {
+    switch (escape) {
       case '0':
         code_point = 0x00;
         break;
@@ -276,7 +277,7 @@ std::string DecodeDouble(std::span<const std::uint32_t> cps) {
         len = 10;
         break;
       default:
-        code_point = static_cast<char32_t>(first_character);
+        code_point = static_cast<char32_t>(escape);
         break;  // 문법상 도달 불가
     }
     append(code_point, true);
@@ -305,39 +306,38 @@ std::string DecodeBlock(std::span<const std::uint32_t> cps,
     bool had_break;
   };
   std::vector<Line> lines;
-  for (const RawLine& remaining_length : raw) {
+  for (const RawLine& raw_line : raw) {
     std::size_t lead = 0;
-    while (lead < remaining_length.text.size() &&
-           remaining_length.text[lead] == ' ') {
+    while (lead < raw_line.text.size() && raw_line.text[lead] == ' ') {
       lead++;
     }
-    const bool all_ws = lead == remaining_length.text.size();
-    if (all_ws && remaining_length.text.size() <= ind) {
-      lines.push_back({std::string(), remaining_length.had_break});  // 빈 행
+    const bool all_ws = lead == raw_line.text.size();
+    if (all_ws && raw_line.text.size() <= ind) {
+      lines.push_back({std::string(), raw_line.had_break});  // 빈 행
       continue;
     }
     if (lead < ind && !all_ws) {
       break;  // 들여쓰기 미달 내용 행 — 후행 주석/chomping 밖
     }
     // 내용 행(공백만이라도 indent 초과분은 내용)
-    lines.push_back({util::EncodeUtf8(remaining_length.text.subspan(ind)),
-                     remaining_length.had_break});
+    lines.push_back(
+        {util::EncodeUtf8(raw_line.text.subspan(ind)), raw_line.had_break});
   }
   // 마지막 원소가 "빈 행 + 줄바꿈 없음"이면 구간 끝의 자투리 — 내용 아님
   if (!lines.empty() && lines.back().text.empty() && !lines.back().had_break) {
     lines.pop_back();
   }
   // 후행 빈 행 수(t)와 내용 행 수(k)
-  std::size_t key = lines.size();
-  while (key > 0 && lines[key - 1].text.empty()) {
-    key--;
+  std::size_t content_end = lines.size();
+  while (content_end > 0 && lines[content_end - 1].text.empty()) {
+    content_end--;
   }
-  const std::size_t trailing = lines.size() - key;
+  const std::size_t trailing = lines.size() - content_end;
   std::string body;
   if (!folded) {
-    for (std::size_t index = 0; index < key; index++) {
+    for (std::size_t index = 0; index < content_end; index++) {
       body += lines[index].text;
-      if (index + 1 < key) {
+      if (index + 1 < content_end) {
         body += '\n';
       }
     }
@@ -346,13 +346,13 @@ std::string DecodeBlock(std::span<const std::uint32_t> cps,
     // 더 들여쓴(공백/탭 시작) 행 경계는 줄바꿈 그대로
     int prev = 0;  // 0=없음, 1=보통, 2=더 들여씀
     std::size_t pending_empties = 0;
-    for (std::size_t index = 0; index < key; index++) {
-      const std::string& tag = lines[index].text;
-      if (tag.empty()) {
+    for (std::size_t index = 0; index < content_end; index++) {
+      const std::string& text = lines[index].text;
+      if (text.empty()) {
         pending_empties++;
         continue;
       }
-      const int kind = (tag[0] == ' ' || tag[0] == '\t') ? 2 : 1;
+      const int kind = (text[0] == ' ' || text[0] == '\t') ? 2 : 1;
       if (prev != 0) {
         if (pending_empties != 0U) {
           body.append(pending_empties, '\n');
@@ -363,13 +363,13 @@ std::string DecodeBlock(std::span<const std::uint32_t> cps,
         }
       }
       pending_empties = 0;
-      body += tag;
+      body += text;
       prev = kind;
     }
   }
   // chomping
   const bool last_had_break =
-      key > 0 && (trailing > 0 || lines[key - 1].had_break);
+      content_end > 0 && (trailing > 0 || lines[content_end - 1].had_break);
   if (chomp == ChompKind::kStrip) {
     return body;
   }
@@ -380,12 +380,12 @@ std::string DecodeBlock(std::span<const std::uint32_t> cps,
     return body;
   }
   // KEEP: 마지막 내용 행의 줄바꿈 + 후행 빈 행들을 전부 보존
-  if (key > 0) {
-    if (lines[key - 1].had_break || trailing > 0) {
+  if (content_end > 0) {
+    if (lines[content_end - 1].had_break || trailing > 0) {
       body += '\n';
     }
   }
-  for (std::size_t index = key; index < lines.size(); index++) {
+  for (std::size_t index = content_end; index < lines.size(); index++) {
     if (lines[index].had_break) {
       body += '\n';
     }
@@ -393,72 +393,11 @@ std::string DecodeBlock(std::span<const std::uint32_t> cps,
   return body;
 }
 
-/** @brief 이벤트 구간의 원문을 UTF-8로 뽑는다. */
-std::string SpanText(std::span<const std::uint32_t> buf, const Event& event) {
-  return util::EncodeUtf8(buf.subspan(event.begin, event.end - event.begin));
-}
-
-struct ParsedScalar {
-  bool null = false;
-  transcriber::ValueType value_type = transcriber::ValueType::kNull;
-  std::string value;
-};
-
-ParsedScalar ParseScalar(std::span<const std::uint32_t> buffer,
-                         const Event& presentation_event) {
-  ParsedScalar parsed;
-  const std::span<const std::uint32_t> body =
-      buffer.subspan(presentation_event.begin,
-                     presentation_event.end - presentation_event.begin);
-  if (presentation_event.style == ScalarStyle::kPlain) {
-    parsed.null = body.empty();
-    parsed.value = parsed.null ? std::string() : DecodeFlowFolded(body, false);
-  } else if (presentation_event.style == ScalarStyle::kSingleQuoted) {
-    parsed.value_type = transcriber::ValueType::kString;
-    parsed.value = DecodeFlowFolded(body, true);
-  } else if (presentation_event.style == ScalarStyle::kDoubleQuoted) {
-    parsed.value_type = transcriber::ValueType::kString;
-    parsed.value = DecodeDouble(body);
-  } else {
-    parsed.value_type = transcriber::ValueType::kString;
-    parsed.value =
-        DecodeBlock(body, presentation_event.indent, presentation_event.chomp,
-                    presentation_event.style == ScalarStyle::kFolded);
-  }
-  return parsed;
-}
-
 struct SerializationBuild {
   SerializationNode node;
   SerializationNode key;
   bool has_key = false;
 };
-
-bool AttachSerialization(std::vector<SerializationBuild>& stack,
-                         SerializationNode& root, bool& have_root,
-                         SerializationNode&& node) {
-  if (stack.empty()) {
-    root = std::move(node);
-    have_root = true;
-    return true;
-  }
-  SerializationBuild& top = stack.back();
-  if (top.node.kind == SerializationNode::Kind::kSequence) {
-    top.node.items.push_back(std::move(node));
-    return true;
-  }
-  if (top.node.kind == SerializationNode::Kind::kMapping) {
-    if (!top.has_key) {
-      top.key = std::move(node);
-      top.has_key = true;
-    } else {
-      top.node.pairs.push_back({std::move(top.key), std::move(node)});
-      top.has_key = false;
-    }
-    return true;
-  }
-  return false;
-}
 
 std::string EventText(std::span<const std::uint32_t> buffer,
                       const Event& event) {
@@ -488,8 +427,7 @@ class SerializationTreeSink final : public SerializationSink {
         have_root_ = false;
         return true;
       case SerializationEventKind::kNode:
-        if (!AttachSerialization(stack_, root_, have_root_,
-                                 std::move(event.node))) {
+        if (!AttachSerialization(std::move(event.node))) {
           return Fail("node has no parent");
         }
         return true;
@@ -510,8 +448,7 @@ class SerializationTreeSink final : public SerializationSink {
         if (build.has_key) {
           return Fail("mapping key has no value");
         }
-        if (!AttachSerialization(stack_, root_, have_root_,
-                                 std::move(build.node))) {
+        if (!AttachSerialization(std::move(build.node))) {
           return Fail("container has no parent");
         }
         return true;
@@ -529,6 +466,30 @@ class SerializationTreeSink final : public SerializationSink {
   }
 
  private:
+  bool AttachSerialization(SerializationNode&& node) {
+    if (stack_.empty()) {
+      root_ = std::move(node);
+      have_root_ = true;
+      return true;
+    }
+    SerializationBuild& top = stack_.back();
+    if (top.node.kind == SerializationNode::Kind::kSequence) {
+      top.node.items.push_back(std::move(node));
+      return true;
+    }
+    if (top.node.kind == SerializationNode::Kind::kMapping) {
+      if (!top.has_key) {
+        top.key = std::move(node);
+        top.has_key = true;
+      } else {
+        top.node.pairs.push_back({std::move(top.key), std::move(node)});
+        top.has_key = false;
+      }
+      return true;
+    }
+    return false;
+  }
+
   bool Fail(std::string error) {
     result_.error = std::move(error);
     return false;
@@ -571,10 +532,24 @@ class SerializationEventDecoder final : public EventSink {
         output.kind = SerializationEventKind::kNode;
         output.node.kind = SerializationNode::Kind::kScalar;
         ApplyProperties(output.node);
-        ParsedScalar scalar = ParseScalar(buffer_, event);
-        output.node.null = scalar.null;
-        output.node.value_type = scalar.value_type;
-        output.node.scalar = std::move(scalar.value);
+        const std::span<const std::uint32_t> body =
+            buffer_.subspan(event.begin, event.end - event.begin);
+        if (event.style == ScalarStyle::kPlain) {
+          output.node.null = body.empty();
+          output.node.scalar =
+              output.node.null ? std::string() : DecodeFlowFolded(body, false);
+        } else {
+          output.node.value_type = transcriber::ValueType::kString;
+          if (event.style == ScalarStyle::kSingleQuoted) {
+            output.node.scalar = DecodeFlowFolded(body, true);
+          } else if (event.style == ScalarStyle::kDoubleQuoted) {
+            output.node.scalar = DecodeDouble(body);
+          } else {
+            output.node.scalar =
+                DecodeBlock(body, event.indent, event.chomp,
+                            event.style == ScalarStyle::kFolded);
+          }
+        }
         if (output.node.tag == "!!binary") {
           output.node.value_type = transcriber::ValueType::kBinary;
         }
@@ -627,17 +602,15 @@ ParseResult Parse(std::u32string_view presentation) {
 ParseResult Parse(std::span<const std::uint32_t> presentation) {
   ParseResult result;
   SerializationTreeSink sink(result);
-  if (!ParseToSerializationSink(presentation, sink, result.error)) {
+  if (!Parse(presentation, sink, result.error)) {
     return result;
   }
-  if (!sink.Finish()) {
-    return result;
-  }
+  static_cast<void>(sink.Finish());
   return result;
 }
 
-bool ParseToSerializationSink(std::span<const std::uint32_t> presentation,
-                              SerializationSink& sink, std::string& error) {
+bool Parse(std::span<const std::uint32_t> presentation,
+           SerializationSink& output, std::string& error) {
   Diag diag;
   Grammar::Arena arena;
   Grammar::ParseState state;
@@ -658,8 +631,9 @@ bool ParseToSerializationSink(std::span<const std::uint32_t> presentation,
     return false;
   }
 
-  SerializationEventDecoder decoder(presentation, sink, error);
-  return EmitEvents(Grammar::Materialize(arena, state.roots), decoder);
+  SerializationEventDecoder decoder(presentation, output, error);
+  EventEmitter emitter(decoder);
+  return emitter.Emit(Grammar::Materialize(arena, state.roots));
 }
 
 }  // namespace bedrock::archive::yaml

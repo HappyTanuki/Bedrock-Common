@@ -43,27 +43,28 @@ struct Event {
 
 /**
  * @brief Parse event를 순서대로 소비하는 내부 sink.
- *
- * 현재 DOM 경로는 Events에 수집한 뒤 SerializationStream을 만든다. 이 sink
- * 경계는 향후 parser가 구문 트리나 event vector를 materialize하지 않고 event를
- * 직접 전달할 수 있게 유지한다. Event가 source range와 YAML style을 가지므로
- * 아직 포맷 중립 public SAX 계약은 아니다. false를 반환하면 방출을 중단한다.
+
+ * Parse는 구문 트리를 materialize한 뒤 EventEmitter가 presentation 정보를 담은
+ * event를 순서대로 방출한다. Event는 원문 구간과 YAML 스타일을 가지므로
+ * 포맷 중립 API가 아니며, false를 반환하면 방출을 중단한다.
  */
 class EventSink {
  public:
-  virtual ~EventSink() = default;
+  virtual ~EventSink();
   virtual bool OnEvent(const Event& event) = 0;
 };
 
-/** @brief 완성된 구문 트리에서 생성하는 materialized event adapter. */
-struct Events {
-  std::vector<Event> list;
+/** @brief 구문 트리를 순회하며 Parse event를 output에 방출하는 작업 객체. */
+class EventEmitter final {
+ public:
+  explicit EventEmitter(EventSink& output) : output_(&output) {}
+
+  bool Emit(const std::vector<SyntaxNode>& syntax);
+
+ private:
+  bool Visit(const SyntaxNode& node);
+
+  EventSink* output_;
 };
-
-/** @brief 구문 트리를 순회하며 sink에 Parse event를 순서대로 방출한다. */
-bool EmitEvents(const std::vector<SyntaxNode>& syntax, EventSink& sink);
-
-/** @brief 구문 트리를 순회해 materialized event adapter를 만든다. */
-Events BuildEvents(const std::vector<SyntaxNode>& syntax);
 
 }  // namespace bedrock::archive::yaml

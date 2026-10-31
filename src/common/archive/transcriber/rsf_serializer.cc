@@ -102,15 +102,6 @@ void Present(std::ostream& output_stream, const Node& n, std::size_t indent) {
   }
 }
 
-bedrock::Status BorrowStatus(const OwnedStatus& source,
-                             std::string& message_storage) {
-  message_storage = source.Message();
-  const bedrock::ErrorCode code =
-      source.Ok() ? bedrock::ErrorCode::kSuccess
-                  : static_cast<bedrock::ErrorCode>(source.code.value());
-  return bedrock::Status(code, message_storage);
-}
-
 struct RsfSerializerOutput {
   std::ostringstream stream{std::ios::binary};
 };
@@ -120,7 +111,7 @@ struct RsfSerializerOutput {
 template <>
 struct TextSerializer<RsfFormat>::Impl final : private RsfSerializerOutput,
                                                public RepresentCore {
-  explicit Impl(std::uint16_t id) : RepresentCore(id, stream), machine_id(id) {}
+  explicit Impl() : RepresentCore(stream) {}
   ~Impl() override;
 
   bedrock::Status Run(bedrock::archive::Schema& schema, std::string_view name) {
@@ -146,7 +137,6 @@ struct TextSerializer<RsfFormat>::Impl final : private RsfSerializerOutput,
     return status;
   }
 
-  std::uint16_t machine_id;
   std::string output;
   std::string error_storage;
   bedrock::Status status = bedrock::Status(bedrock::ErrorCode::kSuccess);
@@ -169,8 +159,8 @@ OwnedStatus TextSerializer<RsfFormat>::Impl::DumpRepresentation(
 }
 
 template <>
-TextSerializer<RsfFormat>::TextSerializer(std::uint16_t machine_id)
-    : impl_(std::make_unique<Impl>(machine_id)) {}
+TextSerializer<RsfFormat>::TextSerializer()
+    : impl_(std::make_unique<Impl>()) {}
 template <>
 TextSerializer<RsfFormat>::~TextSerializer() {}
 template <>
@@ -180,7 +170,7 @@ TextSerializer<RsfFormat>& TextSerializer<RsfFormat>::operator=(
     TextSerializer&&) noexcept = default;
 template <>
 void TextSerializer<RsfFormat>::Reset() & {
-  impl_ = std::make_unique<Impl>(impl_->machine_id);
+  impl_ = std::make_unique<Impl>();
 }
 template <>
 bedrock::Status TextSerializer<RsfFormat>::Dump(

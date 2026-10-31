@@ -454,7 +454,7 @@ static Register GetX86CpuFeatures() {
     __cpuidex(reinterpret_cast<int*>(&features.exx[12]), 7, 1);
   }
 #endif
-#endif
+#endif  // BEDROCK_ARCH_X86
   return features;
 }
 
@@ -469,9 +469,9 @@ static Register GetX86CpuFeatures() {
  *
  * @return 플랫폼별 조회 결과가 채워진(또는 미지원 시 0인) Register.
  */
+#if BEDROCK_ARCH_ARM
 static Register GetARMCpuFeatures() {
   Register features = {};
-#if BEDROCK_ARCH_ARM
 #if defined(__aarch64__) && defined(__linux__)
   const unsigned long hwcap = getauxval(AT_HWCAP);
   features.exx[0] = static_cast<std::uint32_t>(hwcap & 0xffffffffUL);
@@ -604,11 +604,11 @@ static Register GetARMCpuFeatures() {
     }
   }
 #endif
-#endif
   return features;
 }
+#endif  // ARM function availability
 
-// CPU가 지원하는 명령어셋을 런타임에 감지합니다.
+// CPU가 지원하는 명령어셋
 //  x86/x64 : CPUID(leaf 1)의 EAX/EBX/ECX/EDX 를 exx[0..3] 에 담습니다.
 //  ARM     : HWCAP/HWCAP2(macOS sysctl, Windows IsProcessorFeaturePresent)
 //            결과를 위 비트 정의대로 담습니다.

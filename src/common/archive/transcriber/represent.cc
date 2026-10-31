@@ -244,10 +244,13 @@ std::size_t RepresentCore::OnMapBegin(const Field& name, std::size_t count) {
   if (status_.Failed()) {
     return kFail;
   }
+  const bool duplicate_keys = std::exchange(duplicate_keys_pending_, false);
   BeginContainer(name.name, Node::Kind::kMapping, BuildFrame::Ctx::kMap);
+  building_.back().node.duplicate_keys = duplicate_keys;
   return count;
 }
 void RepresentCore::OnMapEnd() { EndContainer(); }
+void RepresentCore::OnDuplicateKeysBegin() { duplicate_keys_pending_ = true; }
 
 std::size_t RepresentCore::OnSetBegin(const Field& name, std::size_t count) {
   if (status_.Failed()) {
@@ -269,6 +272,13 @@ OwnedStatus RepresentCore::Represent(Schema& schema, std::string_view name) {
 
 OwnedStatus RepresentCore::Dump() {
   if (status_.Failed()) {
+    return status_;
+  }
+  const std::int64_t identity_error = FindIdentityError(root_);
+  if (identity_error < 0) {
+    status_ = OwnedStatus(SnowflakeIdentityError(identity_error));
+    root_done_ = false;
+    root_ = Node{};
     return status_;
   }
   if (!building_.empty()) {

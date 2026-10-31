@@ -2,3 +2,5 @@
 build
 output
 .cache
+__pycache__/
+*.py[cod]

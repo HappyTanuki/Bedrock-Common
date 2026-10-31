@@ -1,107 +1,66 @@
-cmake_minimum_required (VERSION 3.25)
-# ============================================================
-# Policy
-# ============================================================
-include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/policy.cmake")
-
-# ============================================================
-# Project
-# ============================================================
+cmake_minimum_required(VERSION 3.25)
 if(NOT DEFINED ROOT_PROJECT_NAME)
     set(ROOT_PROJECT_NAME "Bedrock")
 endif()
-
-set(SUB_PROJECT_NAME "Common")
-project(${SUB_PROJECT_NAME} LANGUAGES CXX)
-
-include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/header_layout.cmake")
-
-set(CMAKE_CXX_STANDARD             23)
-set(CMAKE_CXX_STANDARD_REQUIRED    ON)
-set(CMAKE_CXX_EXTENSIONS          OFF)
-set(CMAKE_EXPORT_COMPILE_COMMANDS  ON)
-
-# ============================================================
-# Architecture detection (config.h 생성에 사용)
-# ============================================================
-# BEDROCK_ARCH_X86 / BEDROCK_ARCH_ARM / BEDROCK_ARCH_NAME 변수를 설정합니다.
-# 반드시 아래 configure_file(config.h.in -> config.h) 호출 전에 include 되어야 합니다.
-include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/architecture.cmake")
-
-# ============================================================
-# Linkage – libc detection, license guard
-# ============================================================
-include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/linkage.cmake")
-
-# ============================================================
-# Target – Common
-# ============================================================
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cc")
-
-if(BUILD_SHARED_LIBS MATCHES "ON")
-    add_library(${SUB_PROJECT_NAME} SHARED ${SOURCES})
-else()
-    add_library(${SUB_PROJECT_NAME} STATIC ${SOURCES})
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 endif()
+project(Common LANGUAGES CXX)
 
-target_include_directories(${SUB_PROJECT_NAME}
-    PUBLIC "${COMMON_EXTERNAL_INCLUDE_DIR}"
-    PRIVATE "${COMMON_INTERNAL_INCLUDE_DIR}")
-common_verify_header_visibility(${SUB_PROJECT_NAME})
+include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/build_config.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/header_layout.cmake")
+_BedrockBuildConfig_detect_architecture(OUT_PREFIX BEDROCK)
+_BedrockBuildConfig_detect_libc(OUT_VAR COMMON_LIBC)
+if(NOT DEFINED BUILD_SHARED_LIBS OR BUILD_SHARED_LIBS)
+    set(_common_library_type SHARED)
+else()
+    set(_common_library_type STATIC)
+endif()
+_BedrockBuildConfig_validate_linkage(LIBRARY_TYPE "${_common_library_type}" LIBC "${COMMON_LIBC}" LABEL Common)
 
-# Alias for parent projects
-add_library(${ROOT_PROJECT_NAME}::${SUB_PROJECT_NAME} ALIAS ${SUB_PROJECT_NAME})
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cc")
+if(_common_library_type STREQUAL "SHARED")
+    add_library(Common SHARED ${SOURCES})
+else()
+    add_library(Common STATIC ${SOURCES})
+endif()
+add_library(${ROOT_PROJECT_NAME}::Common ALIAS Common)
+_BedrockBuildConfig_stage_public_headers(SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/public-include" FILES common.h TREES common OUT_VAR COMMON_EXTERNAL_INCLUDE_DIR)
+set(COMMON_INTERNAL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(Common PUBLIC "$<BUILD_INTERFACE:${COMMON_EXTERNAL_INCLUDE_DIR}>" "$<INSTALL_INTERFACE:include>" PRIVATE "${COMMON_INTERNAL_INCLUDE_DIR}")
+set(COMMON_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/cmake_include/bedrock_common_config.h.in" "${COMMON_GENERATED_INCLUDE_DIR}/bedrock_common_config.h" @ONLY)
+target_include_directories(Common SYSTEM PUBLIC "$<BUILD_INTERFACE:${COMMON_GENERATED_INCLUDE_DIR}>" "$<INSTALL_INTERFACE:include>")
+if(WIN32)
+    target_link_libraries(Common PRIVATE shell32 ole32)
+endif()
+target_link_libraries(Common PUBLIC _BedrockBuildConfig::Cxx23 _BedrockBuildConfig::NativeIsa PRIVATE _BedrockBuildConfig::Warnings _BedrockBuildConfig::WarningsAsErrors _BedrockBuildConfig::Utf8 _BedrockBuildConfig::MsvcConformance _BedrockBuildConfig::MsvcParallel _BedrockBuildConfig::NoExceptions _BedrockBuildConfig::NoRtti)
+_BedrockBuildConfig_enable_pch(Common HEADER "${COMMON_INTERNAL_INCLUDE_DIR}/pch.h")
+_BedrockBuildConfig_set_language_properties(Common)
+_BedrockBuildConfig_set_msvc_debug_information(Common)
+_BedrockBuildConfig_set_origin_rpath(Common)
+_BedrockBuildConfig_enable_windows_exports(Common)
+_BedrockBuildConfig_assert_header_visibility(Common SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-# ============================================================
-# GoogleTest (테스트 전용 — 최상위 빌드에서만)
-# ============================================================
-# 경고 옵션(add_compile_options)이 디렉토리에 걸리기 전에 가져와야
-# gtest 소스가 -Werror -Weverything을 물려받지 않습니다. SYSTEM으로
-# 선언해 테스트 TU에서 gtest 헤더가 시스템 헤더(-isystem)로 취급되게
-# 합니다.
-if(PROJECT_IS_TOP_LEVEL)
-    set(BUILD_TESTING ON)
-
+option(COMMON_BUILD_TESTS "Build Common tests" ${PROJECT_IS_TOP_LEVEL})
+if(COMMON_BUILD_TESTS)
     include(CTest)
     enable_testing()
-
     add_subdirectory(test)
 endif()
 
-# Compiler options
-include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/compiler_options.cmake")
-
-# ISA 명령어셋 활성화 플래그(-march=native 등). 감지는 런타임에서 수행.
-include("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/isa_features.cmake")
-
-# ============================================================
-# compile_commands.json copy (clangd/IDE intellisense용)
-# ============================================================
-# symlink는 Windows에서 관리자 권한이 필요하므로 copy_if_different로 처리.
-#
-# CMake 단계 순서(configure -> generate) 때문에 단일 cmake 호출로는 자기 generate
-# 결과를 만지지 못합니다. 이중 안전망으로 처리:
-#   (1) configure 시점 execute_process: 이전 configure가 남긴 compile_commands.json이
-#       있으면 즉시 copy. 첫 configure에는 source가 없어 silent fail (정상).
-#       두 번째 configure부터 intellisense 즉시 활성화.
-#   (2) add_custom_target(ALL): 빌드 시점 보장. 첫 빌드 후 항상 최신.
-if (PROJECT_IS_TOP_LEVEL AND CMAKE_EXPORT_COMPILE_COMMANDS)
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CMAKE_BINARY_DIR}/compile_commands.json
-                ${CMAKE_BINARY_DIR}/../compile_commands.json
-        OUTPUT_QUIET
-        ERROR_QUIET
-    )
-    add_custom_target(copy_compile_commands ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CMAKE_BINARY_DIR}/compile_commands.json
-                ${CMAKE_BINARY_DIR}/../compile_commands.json
-        COMMENT "Copying compile_commands.json to output"
-        VERBATIM
-    )
+if(PROJECT_IS_TOP_LEVEL)
+    _BedrockBuildConfig_copy_compile_commands(NAME copy_compile_commands SOURCE "${CMAKE_BINARY_DIR}/compile_commands.json" DESTINATION "${CMAKE_BINARY_DIR}/../compile_commands.json")
 endif()
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/cmake_include/bedrock_common_config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/bedrock_common_config.h" @ONLY)
-target_include_directories(${SUB_PROJECT_NAME} SYSTEM PUBLIC
-    "${CMAKE_CURRENT_BINARY_DIR}")
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+install(DIRECTORY "${COMMON_EXTERNAL_INCLUDE_DIR}/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}" FILES_MATCHING PATTERN "common.h" PATTERN "common/*")
+install(FILES "${COMMON_GENERATED_INCLUDE_DIR}/bedrock_common_config.h" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(TARGETS Common EXPORT BedrockCommonTargets INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(EXPORT BedrockCommonTargets NAMESPACE Bedrock:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BedrockCommon")
+configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/.cmake/BedrockCommonConfig.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/BedrockCommonConfig.cmake" INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BedrockCommon")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/BedrockCommonConfig.cmake" DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BedrockCommon")
+export(TARGETS Common NAMESPACE Bedrock:: FILE "${CMAKE_CURRENT_BINARY_DIR}/BedrockCommonTargets.cmake")
+_BedrockBuildConfig_export_build_tree(DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/_BedrockBuildConfigTargets.cmake")
+_BedrockBuildConfig_register_targets(INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/_BedrockBuildConfig")

@@ -4,40 +4,94 @@
  */
 #include "common/util/file.h"
 
+#include <array>
 #include <cstddef>
 #include <cstring>
 #include <fstream>
+#include <system_error>
 #include <utility>
+#include <vector>
 
 #include "common/util/memory.h"
 
 namespace bedrock::util {
+namespace {
 
-bool ReadEntireFile(const std::filesystem::path& path, std::string& out) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file) {
-    return false;
+constexpr std::size_t kFileReadChunkSize = 64 * 1024;
+
+bool ReadFileBytes(std::ifstream& file, std::vector<std::uint8_t>& result) {
+  std::array<std::uint8_t, kFileReadChunkSize> buffer{};
+  while (true) {
+    file.read(reinterpret_cast<char*>(buffer.data()),
+              static_cast<std::streamsize>(buffer.size()));
+    const std::streamsize count = file.gcount();
+    if (count > 0) {
+      result.insert(result.end(), buffer.begin(),
+                    buffer.begin() + static_cast<std::size_t>(count));
+    }
+    if (file.eof()) {
+      return !file.bad();
+    }
+    if (!file || count == 0) {
+      return false;
+    }
   }
-
-  out = std::string(std::istreambuf_iterator<char>(file),
-                    std::istreambuf_iterator<char>());
-
-  return true;
-}
-bool ReadEntireFile(const std::filesystem::path& path,
-                    std::vector<std::uint8_t>& out) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file) {
-    return false;
-  }
-
-  out = std::vector<std::uint8_t>(std::istreambuf_iterator<char>(file),
-                                  std::istreambuf_iterator<char>());
-
-  return true;
 }
 
-// wrapper for string_view
+}  // namespace
+
+struct FileContents::Impl {
+  std::vector<std::uint8_t> bytes;
+};
+
+FileContents::FileContents() : impl_(std::make_unique<Impl>()) {}
+FileContents::~FileContents() = default;
+FileContents::FileContents(FileContents&&) noexcept = default;
+FileContents& FileContents::operator=(FileContents&&) noexcept = default;
+
+bedrock::Status FileContents::Read(const std::filesystem::path& path) & {
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    return bedrock::Status(bedrock::ErrorCode::kNoENT);
+  }
+
+  std::vector<std::uint8_t> result;
+  std::error_code size_error;
+  const auto file_size = std::filesystem::file_size(path, size_error);
+  if (!size_error) {
+    const auto reserve_size =
+        file_size > result.max_size()
+            ? result.max_size()
+            : static_cast<std::vector<std::uint8_t>::size_type>(file_size);
+    result.reserve(reserve_size);
+  }
+
+  if (!ReadFileBytes(file, result)) {
+    return bedrock::Status(bedrock::ErrorCode::kError);
+  }
+
+  if (!impl_) {
+    impl_ = std::make_unique<Impl>();
+  }
+  impl_->bytes = std::move(result);
+  return bedrock::Status(bedrock::ErrorCode::kSuccess);
+}
+
+std::span<const std::uint8_t> FileContents::Bytes() const noexcept {
+  if (!impl_) {
+    return {};
+  }
+  return impl_->bytes;
+}
+
+std::string_view FileContents::Text() const noexcept {
+  if (!impl_ || impl_->bytes.empty()) {
+    return {};
+  }
+  return {reinterpret_cast<const char*>(impl_->bytes.data()),
+          impl_->bytes.size()};
+}
+
 bool WriteToFile(const std::filesystem::path& path, std::string_view data) {
   auto bytes = std::span(reinterpret_cast<const std::uint8_t*>(data.data()),
                          data.size());

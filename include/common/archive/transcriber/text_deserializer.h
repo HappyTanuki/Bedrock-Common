@@ -20,8 +20,8 @@ namespace bedrock::archive::transcriber {
 template <typename Format>
 class TextDeserializer {
  public:
-  explicit TextDeserializer(std::uint16_t machine_id = 0);
-  TextDeserializer(std::uint16_t machine_id, std::string_view input);
+  TextDeserializer();
+  explicit TextDeserializer(std::string_view input);
   ~TextDeserializer();
   TextDeserializer(const TextDeserializer&) = delete;
   TextDeserializer& operator=(const TextDeserializer&) = delete;

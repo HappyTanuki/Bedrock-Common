@@ -150,7 +150,7 @@ void FillExtreme(Data& decoded) {
 /** @brief 스키마를 RBF로 파일에 쓴다(산출물 보존). */
 template <typename T>
 void SerializeToFile(const std::string& path, T& value) {
-  RbfSerializer serializer(0);
+  RbfSerializer serializer;
   ASSERT_TRUE(serializer.Dump(value).Ok());
   const std::span<const std::byte> output = serializer.Output();
   std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
@@ -167,7 +167,7 @@ test_support::OwnedStatus DeserializeFromFile(const std::string& path,
                           std::istreambuf_iterator<char>()};
   const std::span<const std::byte> bytes(
       reinterpret_cast<const std::byte*>(input.data()), input.size());
-  RbfDeserializer deserializer(0, bytes);
+  RbfDeserializer deserializer(bytes);
   return test_support::CopyStatus(deserializer.Load(value));
 }
 

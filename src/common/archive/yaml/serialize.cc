@@ -8,14 +8,19 @@
 #include <map>
 #include <set>
 #include <string>
+#include "archive/node.h"
+#include "archive/transcriber.h"
 
 namespace bedrock::archive::yaml {
+
+SerializationSink::~SerializationSink() = default;
 namespace {
+
 
 void CountReferences(const transcriber::Node& representation,
                      std::map<std::uint64_t, std::size_t>& reference_counts,
                      std::set<std::uint64_t>& expanded) {
-  const std::uint64_t identity = representation.identity;
+  const std::uint64_t identity = static_cast<std::uint64_t>(representation.identity);
   ++reference_counts[identity];
   if (!expanded.insert(identity).second) {
     return;
@@ -33,7 +38,7 @@ SerializationNode SerializeNode(
     const transcriber::Node& representation,
     const std::map<std::uint64_t, std::size_t>& reference_counts,
     std::map<std::uint64_t, std::string>& anchors, std::size_t& next_anchor) {
-  const std::uint64_t identity = representation.identity;
+  const std::uint64_t identity = static_cast<std::uint64_t>(representation.identity);
   const auto count = reference_counts.find(identity);
   const bool shared =
       count != reference_counts.end() && count->second > std::size_t{1};
@@ -59,11 +64,26 @@ SerializationNode SerializeNode(
   if (representation.kind == transcriber::Node::Kind::kScalar) {
     serialized.kind = SerializationNode::Kind::kScalar;
   } else if (representation.kind == transcriber::Node::Kind::kMapping) {
-    serialized.kind = SerializationNode::Kind::kMapping;
-    for (const transcriber::Node::Pair& pair : representation.pairs) {
-      serialized.pairs.push_back(
-          {SerializeNode(pair.key, reference_counts, anchors, next_anchor),
-           SerializeNode(pair.value, reference_counts, anchors, next_anchor)});
+    if (representation.duplicate_keys) {
+      serialized.kind = SerializationNode::Kind::kSequence;
+      serialized.tag = "!!pairs";
+      for (const transcriber::Node::Pair& pair : representation.pairs) {
+        SerializationNode item;
+        item.kind = SerializationNode::Kind::kMapping;
+        item.pairs.push_back(
+            {SerializeNode(pair.key, reference_counts, anchors, next_anchor),
+             SerializeNode(pair.value, reference_counts, anchors,
+                           next_anchor)});
+        serialized.items.push_back(std::move(item));
+      }
+    } else {
+      serialized.kind = SerializationNode::Kind::kMapping;
+      for (const transcriber::Node::Pair& pair : representation.pairs) {
+        serialized.pairs.push_back(
+            {SerializeNode(pair.key, reference_counts, anchors, next_anchor),
+             SerializeNode(pair.value, reference_counts, anchors,
+                           next_anchor)});
+      }
     }
   } else {
     serialized.kind = SerializationNode::Kind::kSequence;
@@ -88,13 +108,15 @@ const SerializationNode* SerializationNode::Find(std::string_view key) const {
 }
 
 SerializationStream Serialize(const transcriber::Node& representation) {
+  SerializationStream serialization;
+  serialization.identity_error = transcriber::FindIdentityError(representation);
+  if (serialization.identity_error < 0) return serialization;
   std::map<std::uint64_t, std::size_t> reference_counts;
   std::set<std::uint64_t> expanded;
   CountReferences(representation, reference_counts, expanded);
 
   std::map<std::uint64_t, std::string> anchors;
   std::size_t next_anchor = 1;
-  SerializationStream serialization;
   serialization.documents.push_back(
       SerializeNode(representation, reference_counts, anchors, next_anchor));
   return serialization;

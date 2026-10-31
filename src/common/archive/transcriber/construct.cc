@@ -30,15 +30,6 @@ constexpr std::size_t kFail = std::numeric_limits<std::size_t>::max();
 /** @brief 성공 상태. */
 OwnedStatus Ok() { return {make_error_code(TranscriberError::kSuccess)}; }
 
-/** @brief "…를 파싱하는 동안 손상" 상태(대상 이름 포함). */
-OwnedStatus CorruptedAt(std::string_view what) {
-  const std::string_view fmt =
-      GetI18nString(locale::StringKey::kStatusCorruptedWhileParsing,
-                    locale::IsO6391::kKO, locale::IsO31661::kKR);
-  return {TranscriberError::kCorrupted,
-          std::vformat(fmt, std::make_format_args(what))};
-}
-
 /** @brief "대상 없음" 상태(찾던 이름 포함). */
 OwnedStatus MissingEntry(std::string_view name) {
   const std::string_view base =
@@ -173,6 +164,10 @@ void ConstructCore::EnsureLoaded() {
     return;
   }
   status_ = LoadRepresentation(input_, doc_);  // 포맷 훅: Parse+Compose
+  if (!status_.Failed()) {
+    const std::int64_t identity_error = FindIdentityError(doc_);
+    if (identity_error < 0) status_ = OwnedStatus(SnowflakeIdentityError(identity_error));
+  }
 }
 
 const Node* ConstructCore::ResolveChild(std::string_view name) {
@@ -285,6 +280,10 @@ std::size_t ConstructCore::OnMapBegin(const Field& name, std::size_t count) {
     status_ = CorruptedAt(NameOr(name.name, "mapping"));
     return kFail;
   }
+  if (node->duplicate_keys && !allow_duplicates) {
+    status_ = CorruptedAt("!!pairs requires a multi-key mapping");
+    return kFail;
+  }
   if (!allow_duplicates && !MappingHasUniqueKeys(*node)) {
     status_ = CorruptedAt("duplicate key");
     return kFail;
@@ -299,10 +298,9 @@ void ConstructCore::OnMapEnd() {
 }
 
 void ConstructCore::OnDuplicateKeysBegin() {
-  // multimap 등 중복 키가 의미 있는 컨테이너다. 포맷 훅에 알리고,
-  // 곧 이어지는 맵 진입에서 중복 키 검증을 건너뛴다.
+  // multimap 등 중복 키가 의미 있는 컨테이너다. 곧 이어지는 맵 진입에서
+  // !!pairs로 Compose된 multi-key mapping을 허용한다.
   duplicate_keys_pending_ = true;
-  OnDuplicateKeysNotify();
 }
 
 /**

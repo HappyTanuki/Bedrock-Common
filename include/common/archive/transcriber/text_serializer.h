@@ -20,7 +20,7 @@ namespace bedrock::archive::transcriber {
 template <typename Format>
 class TextSerializer {
  public:
-  explicit TextSerializer(std::uint16_t machine_id = 0);
+  TextSerializer();
   ~TextSerializer();
   TextSerializer(const TextSerializer&) = delete;
   TextSerializer& operator=(const TextSerializer&) = delete;

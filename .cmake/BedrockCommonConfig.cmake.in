@@ -1,0 +1,7 @@
+include(CMakeFindDependencyMacro)
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/_BedrockBuildConfigTargets.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/_BedrockBuildConfigTargets.cmake")
+else()
+    find_dependency(_BedrockBuildConfig CONFIG)
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/BedrockCommonTargets.cmake")

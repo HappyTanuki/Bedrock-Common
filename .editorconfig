@@ -1,0 +1,22 @@
+# 저장 인코딩과 공백 규칙. 줄바꿈은 .gitattributes(text=auto)가 OS별로 관리한다.
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{h,cc,cpp,hpp,inl}]
+indent_style = space
+indent_size = 2
+
+[{CMakeLists.txt,*.cmake,*.cmake.in}]
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

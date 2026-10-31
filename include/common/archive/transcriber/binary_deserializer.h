@@ -22,9 +22,8 @@ namespace bedrock::archive::transcriber {
 template <typename Format>
 class BinaryDeserializer {
  public:
-  explicit BinaryDeserializer(std::uint16_t machine_id = 0);
-  BinaryDeserializer(std::uint16_t machine_id,
-                     std::span<const std::byte> input);
+  BinaryDeserializer();
+  explicit BinaryDeserializer(std::span<const std::byte> input);
   ~BinaryDeserializer();
   BinaryDeserializer(const BinaryDeserializer&) = delete;
   BinaryDeserializer& operator=(const BinaryDeserializer&) = delete;

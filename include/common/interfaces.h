@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file interfaces.h
  * @brief bedrock 공용 인터페이스와 CRTP 헬퍼 정의.
  */

@@ -4,7 +4,6 @@
  */
 #include "archive/yaml/compose.h"
 
-#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +23,11 @@ namespace {
 bool ValidateNodeTag(const SerializationNode& serialized, std::string& error) {
   static const char* const kScalarOnlyTags[] = {
       "!!int", "!!float", "!!bool", "!!str", "!!binary", "!!timestamp"};
+  if (serialized.tag == "!!pairs" &&
+      serialized.kind != SerializationNode::Kind::kSequence) {
+    error = "tag !!pairs requires a sequence";
+    return false;
+  }
   if (serialized.kind != SerializationNode::Kind::kScalar) {
     for (const char* scalar_only_tag : kScalarOnlyTags) {
       if (serialized.tag == scalar_only_tag) {
@@ -45,58 +49,132 @@ bool ValidateNodeTag(const SerializationNode& serialized, std::string& error) {
 }
 
 /**
- * @brief 매핑 키의 equality를 판정한다.
+ * @brief YAML !!pairs sequence를 duplicate-key mapping representation으로
+ * 낮춘다.
  *
- * YAML representation에서 스칼라 키는 (태그, 값 종류, 디코드된 문자열)
- * 삼인조로 동일성을 판단한다. 컬렉션 키는 구조 전체를 재귀 비교한다.
+ * tag:yaml.org,2002:pairs는 한 항목짜리 mapping들의 sequence이며 같은 키를
+ * 여러 번 가질 수 있다. 일반 YAML mapping의 key uniqueness는 완화하지 않는다.
  */
-bool SameKey(const transcriber::Node& left, const transcriber::Node& right) {
-  if (left.kind != right.kind || left.tag != right.tag ||
-      left.vtype != right.vtype) {
+bool NormalizePairs(transcriber::Node& node, std::string& error) {
+  if (node.tag != "!!pairs") {
+    return true;
+  }
+  if (node.kind != transcriber::Node::Kind::kSequence) {
+    error = "tag !!pairs requires a sequence";
     return false;
   }
-  if (left.kind == transcriber::Node::Kind::kScalar) {
-    return left.scalar == right.scalar && left.null == right.null;
-  }
-  if (left.items.size() != right.items.size() ||
-      left.pairs.size() != right.pairs.size()) {
-    return false;
-  }
-  for (std::size_t index = 0; index < left.items.size(); ++index) {
-    if (!SameKey(left.items[index], right.items[index])) {
+
+  std::vector<transcriber::Node::Pair> pairs;
+  pairs.reserve(node.items.size());
+  for (transcriber::Node& item : node.items) {
+    if (item.kind != transcriber::Node::Kind::kMapping ||
+        item.pairs.size() != 1U) {
+      error = "each !!pairs entry must be a single-pair mapping";
       return false;
     }
+    pairs.push_back(std::move(item.pairs.front()));
   }
-  for (std::size_t index = 0; index < left.pairs.size(); ++index) {
-    if (!SameKey(left.pairs[index].key, right.pairs[index].key) ||
-        !SameKey(left.pairs[index].value, right.pairs[index].value)) {
-      return false;
-    }
-  }
+
+  node.kind = transcriber::Node::Kind::kMapping;
+  node.duplicate_keys = true;
+  node.items.clear();
+  node.pairs = std::move(pairs);
   return true;
 }
 
-/**
- * @brief 매핑 안에서 키가 유일한지 검증한다(YAML 1.2.2 §3.1.1).
- *
- * "a: 1\na: 2\n"처럼 같은 매핑에 동일 키가 두 번 나타나면
- * representation 모델 위반이다. 다른 매핑끼리는 서로 독립이다.
- */
-bool ValidateKeyUniqueness(const SerializationNode& mapping,
-                           std::string& error) {
-  std::vector<const SerializationNode::Pair*> seen;
+// Parse가 내보내는 것과 같은 event로 materialized tree를 재생한다.
+bool ReplayNode(const SerializationNode& serialized, SerializationSink& sink) {
+  SerializationEvent event;
+  event.node.kind = serialized.kind;
+  event.node.null = serialized.null;
+  event.node.tag = serialized.tag;
+  event.node.anchor = serialized.anchor;
+  event.node.value_type = serialized.value_type;
+  event.node.scalar = serialized.scalar;
+
+  switch (serialized.kind) {
+    case SerializationNode::Kind::kScalar:
+      event.kind = SerializationEventKind::kNode;
+      return sink.OnEvent(std::move(event));
+    case SerializationNode::Kind::kAlias:
+      event.kind = SerializationEventKind::kNode;
+      event.node.alias = serialized.alias;
+      return sink.OnEvent(std::move(event));
+    case SerializationNode::Kind::kSequence:
+      event.kind = SerializationEventKind::kSeqStart;
+      if (!sink.OnEvent(std::move(event))) {
+        return false;
+      }
+      for (const SerializationNode& item : serialized.items) {
+        if (!ReplayNode(item, sink)) {
+          return false;
+        }
+      }
+      event = SerializationEvent{};
+      event.kind = SerializationEventKind::kSeqEnd;
+      return sink.OnEvent(std::move(event));
+    case SerializationNode::Kind::kMapping:
+      event.kind = SerializationEventKind::kMapStart;
+      if (!sink.OnEvent(std::move(event))) {
+        return false;
+      }
+      for (const SerializationNode::Pair& pair : serialized.pairs) {
+        if (!ReplayNode(pair.key, sink) || !ReplayNode(pair.value, sink)) {
+          return false;
+        }
+      }
+      event = SerializationEvent{};
+      event.kind = SerializationEventKind::kMapEnd;
+      return sink.OnEvent(std::move(event));
+  }
+  return false;
+}
+
+}  // namespace
+
+bool ComposeEventBuilder::Fail(std::string message) {
+  result.error = std::move(message);
+  failed = true;
+  return false;
+}
+
+bool ComposeEventBuilder::Attach(transcriber::Node&& node) {
+  if (stack.empty()) {
+    root = std::move(node);
+    have_root = true;
+    return true;
+  }
+  Build& top = stack.back();
+  if (top.node.kind == transcriber::Node::Kind::kSequence) {
+    top.node.items.push_back(std::move(node));
+    return true;
+  }
+  if (top.node.kind == transcriber::Node::Kind::kMapping) {
+    if (!top.has_key) {
+      top.key = std::move(node);
+      top.has_key = true;
+    } else {
+      top.node.pairs.push_back({std::move(top.key), std::move(node)});
+      top.has_key = false;
+    }
+    return true;
+  }
+  return Fail("node has no parent");
+}
+
+bool ComposeEventBuilder::ValidateKeys(const transcriber::Node& mapping) {
+  std::vector<const transcriber::Node::Pair*> seen;
   seen.reserve(mapping.pairs.size());
-  for (const SerializationNode::Pair& pair : mapping.pairs) {
-    for (const SerializationNode::Pair* previous : seen) {
+  for (const transcriber::Node::Pair& pair : mapping.pairs) {
+    for (const transcriber::Node::Pair* previous : seen) {
       if (previous->key.tag == pair.key.tag &&
-          previous->key.value_type == pair.key.value_type &&
+          previous->key.vtype == pair.key.vtype &&
           previous->key.scalar == pair.key.scalar &&
           previous->key.null == pair.key.null &&
           previous->key.kind == pair.key.kind &&
           previous->key.items.size() == pair.key.items.size() &&
           previous->key.pairs.size() == pair.key.pairs.size()) {
-        error = "duplicate key: " + pair.key.scalar;
-        return false;
+        return Fail("duplicate key: " + pair.key.scalar);
       }
     }
     seen.push_back(&pair);
@@ -104,255 +182,140 @@ bool ValidateKeyUniqueness(const SerializationNode& mapping,
   return true;
 }
 
-bool ComposeNode(const SerializationNode& serialized,
-                 std::map<std::string, transcriber::Node>& anchors,
-                 transcriber::Node& representation, bool allow_duplicate_keys,
-                 std::string& error) {
-  if (serialized.kind == SerializationNode::Kind::kAlias) {
-    const auto iterator = anchors.find(serialized.alias);
-    if (iterator == anchors.end()) {
-      error = "unresolved alias *" + serialized.alias;
-      return false;
-    }
-    representation = iterator->second;
-    return true;
-  }
+ComposeEventBuilder::ComposeEventBuilder() = default;
 
-  representation.null = serialized.null;
-  representation.tag = serialized.tag;
-  representation.vtype = serialized.value_type;
-  representation.scalar = serialized.scalar;
-  if (serialized.kind == SerializationNode::Kind::kScalar) {
-    if (!ValidateNodeTag(serialized, error)) {
-      return false;
-    }
-    representation.kind = transcriber::Node::Kind::kScalar;
-  } else if (serialized.kind == SerializationNode::Kind::kSequence) {
-    if (!ValidateNodeTag(serialized, error)) {
-      return false;
-    }
-    representation.kind = transcriber::Node::Kind::kSequence;
-    for (const SerializationNode& item : serialized.items) {
-      transcriber::Node child;
-      if (!ComposeNode(item, anchors, child, allow_duplicate_keys, error)) {
-        return false;
-      }
-      representation.items.push_back(std::move(child));
-    }
-  } else {
-    if (!ValidateNodeTag(serialized, error)) {
-      return false;
-    }
-    if (!allow_duplicate_keys && !ValidateKeyUniqueness(serialized, error)) {
-      return false;
-    }
-    representation.kind = transcriber::Node::Kind::kMapping;
-    for (const SerializationNode::Pair& pair : serialized.pairs) {
-      transcriber::Node key;
-      transcriber::Node value;
-      if (!ComposeNode(pair.key, anchors, key, allow_duplicate_keys, error) ||
-          !ComposeNode(pair.value, anchors, value, allow_duplicate_keys,
-                       error)) {
-        return false;
-      }
-      representation.pairs.push_back({std::move(key), std::move(value)});
-    }
-  }
-  if (!serialized.anchor.empty()) {
-    anchors[serialized.anchor] = representation;
-  }
-  return true;
-}
-
-}  // namespace
-
-struct ComposeEventBuilder::Impl {
-  struct Build {
-    transcriber::Node node;
-    transcriber::Node key;
-    bool has_key = false;
-    std::string anchor;
-  };
-
-  explicit Impl(const ComposeOptions& compose_options)
-      : options(compose_options) {}
-
-  bool Fail(std::string message) {
-    result.error = std::move(message);
-    failed = true;
-    return false;
-  }
-
-  bool Attach(transcriber::Node&& node) {
-    if (stack.empty()) {
-      root = std::move(node);
-      have_root = true;
-      return true;
-    }
-    Build& top = stack.back();
-    if (top.node.kind == transcriber::Node::Kind::kSequence) {
-      top.node.items.push_back(std::move(node));
-      return true;
-    }
-    if (top.node.kind == transcriber::Node::Kind::kMapping) {
-      if (!top.has_key) {
-        top.key = std::move(node);
-        top.has_key = true;
-      } else {
-        top.node.pairs.push_back({std::move(top.key), std::move(node)});
-        top.has_key = false;
-      }
-      return true;
-    }
-    return Fail("node has no parent");
-  }
-
-  bool ValidateKeys(const transcriber::Node& mapping) {
-    if (options.allow_duplicate_keys) {
-      return true;
-    }
-    std::vector<const transcriber::Node::Pair*> seen;
-    seen.reserve(mapping.pairs.size());
-    for (const transcriber::Node::Pair& pair : mapping.pairs) {
-      for (const transcriber::Node::Pair* previous : seen) {
-        if (previous->key.tag == pair.key.tag &&
-            previous->key.vtype == pair.key.vtype &&
-            previous->key.scalar == pair.key.scalar &&
-            previous->key.null == pair.key.null &&
-            previous->key.kind == pair.key.kind &&
-            previous->key.items.size() == pair.key.items.size() &&
-            previous->key.pairs.size() == pair.key.pairs.size()) {
-          return Fail("duplicate key: " + pair.key.scalar);
-        }
-      }
-      seen.push_back(&pair);
-    }
-    return true;
-  }
-
-  bool OnEvent(SerializationEvent&& event) {
-    switch (event.kind) {
-      case SerializationEventKind::kDocStart:
-        have_root = false;
-        return true;
-      case SerializationEventKind::kDocEnd:
-        if (!stack.empty()) {
-          return Fail("container remains open at document end");
-        }
-        if (!have_root) {
-          root = transcriber::Node{};
-          root.null = true;
-        }
-        result.docs.push_back(std::move(root));
-        root = transcriber::Node{};
-        have_root = false;
-        anchors.clear();
-        return true;
-      case SerializationEventKind::kNode: {
-        if (event.node.kind == SerializationNode::Kind::kAlias) {
-          const auto iterator = anchors.find(event.node.alias);
-          if (iterator == anchors.end()) {
-            return Fail("unresolved alias *" + event.node.alias);
-          }
-          transcriber::Node alias = iterator->second;
-          return Attach(std::move(alias));
-        }
-        if (!ValidateNodeTag(event.node, result.error)) {
-          failed = true;
-          return false;
-        }
-        transcriber::Node representation;
-        representation.kind = transcriber::Node::Kind::kScalar;
-        representation.null = event.node.null;
-        representation.tag = std::move(event.node.tag);
-        representation.vtype = event.node.value_type;
-        representation.scalar = std::move(event.node.scalar);
-        if (!event.node.anchor.empty()) {
-          anchors[event.node.anchor] = representation;
-        }
-        return Attach(std::move(representation));
-      }
-      case SerializationEventKind::kMapStart:
-      case SerializationEventKind::kSeqStart: {
-        if (!ValidateNodeTag(event.node, result.error)) {
-          failed = true;
-          return false;
-        }
-        Build build;
-        build.node.kind = event.kind == SerializationEventKind::kMapStart
-                              ? transcriber::Node::Kind::kMapping
-                              : transcriber::Node::Kind::kSequence;
-        build.node.tag = std::move(event.node.tag);
-        build.anchor = std::move(event.node.anchor);
-        stack.push_back(std::move(build));
-        return true;
-      }
-      case SerializationEventKind::kMapEnd:
-      case SerializationEventKind::kSeqEnd: {
-        if (stack.empty()) {
-          return Fail("container closes without a matching start");
-        }
-        Build build = std::move(stack.back());
-        stack.pop_back();
-        if (build.has_key) {
-          return Fail("mapping key has no value");
-        }
-        if (build.node.kind == transcriber::Node::Kind::kMapping &&
-            !ValidateKeys(build.node)) {
-          return false;
-        }
-        if (!build.anchor.empty()) {
-          anchors[build.anchor] = build.node;
-        }
-        return Attach(std::move(build.node));
-      }
-    }
-    return Fail("unknown serialization event");
-  }
-
-  ComposeOptions options;
-  ComposeResult result;
-  std::map<std::string, transcriber::Node> anchors;
-  std::vector<Build> stack;
-  transcriber::Node root;
-  bool have_root = false;
-  bool failed = false;
-};
-
-ComposeEventBuilder::ComposeEventBuilder(const ComposeOptions& options)
-    : impl_(new Impl(options)) {}
-
-ComposeEventBuilder::~ComposeEventBuilder() { delete impl_; }
+ComposeEventBuilder::~ComposeEventBuilder() = default;
 
 bool ComposeEventBuilder::OnEvent(SerializationEvent&& event) {
-  return impl_->OnEvent(std::move(event));
+  switch (event.kind) {
+    case SerializationEventKind::kDocStart:
+      have_root = false;
+      return true;
+    case SerializationEventKind::kDocEnd:
+      if (!stack.empty()) {
+        return Fail("container remains open at document end");
+      }
+      if (!have_root) {
+        root = transcriber::Node{};
+        root.null = true;
+      }
+      result.docs.push_back(std::move(root));
+      root = transcriber::Node{};
+      have_root = false;
+      anchors.clear();
+      return true;
+    case SerializationEventKind::kNode: {
+      if (event.node.kind == SerializationNode::Kind::kAlias) {
+        const auto iterator = anchors.find(event.node.alias);
+        if (iterator == anchors.end()) {
+          return Fail("unresolved alias *" + event.node.alias);
+        }
+        transcriber::Node alias = iterator->second;
+        return Attach(std::move(alias));
+      }
+      if (!ValidateNodeTag(event.node, result.error)) {
+        failed = true;
+        return false;
+      }
+      transcriber::Node representation;
+      representation.kind = transcriber::Node::Kind::kScalar;
+      representation.null = event.node.null;
+      representation.tag = std::move(event.node.tag);
+      representation.vtype = event.node.value_type;
+      representation.scalar = std::move(event.node.scalar);
+      if (!event.node.anchor.empty()) {
+        anchors[event.node.anchor] = representation;
+      }
+      return Attach(std::move(representation));
+    }
+    case SerializationEventKind::kMapStart:
+    case SerializationEventKind::kSeqStart: {
+      if (!ValidateNodeTag(event.node, result.error)) {
+        failed = true;
+        return false;
+      }
+      Build build;
+      build.node.kind = event.kind == SerializationEventKind::kMapStart
+                            ? transcriber::Node::Kind::kMapping
+                            : transcriber::Node::Kind::kSequence;
+      build.node.tag = std::move(event.node.tag);
+      build.node.null = event.node.null;
+      build.node.vtype = event.node.value_type;
+      build.node.scalar = std::move(event.node.scalar);
+      build.anchor = std::move(event.node.anchor);
+      stack.push_back(std::move(build));
+      return true;
+    }
+    case SerializationEventKind::kMapEnd:
+    case SerializationEventKind::kSeqEnd: {
+      if (stack.empty()) {
+        return Fail("container closes without a matching start");
+      }
+      Build build = std::move(stack.back());
+      stack.pop_back();
+      if (build.has_key) {
+        return Fail("mapping key has no value");
+      }
+      if (build.node.kind == transcriber::Node::Kind::kMapping &&
+          !ValidateKeys(build.node)) {
+        return false;
+      }
+      if (!NormalizePairs(build.node, result.error)) {
+        failed = true;
+        return false;
+      }
+      if (!build.anchor.empty()) {
+        anchors[build.anchor] = build.node;
+      }
+      return Attach(std::move(build.node));
+    }
+  }
+  return Fail("unknown serialization event");
 }
 
 ComposeResult ComposeEventBuilder::Finish() {
-  if (!impl_->failed && !impl_->stack.empty()) {
-    impl_->Fail("container remains open at stream end");
+  if (!failed && !stack.empty()) {
+    Fail("container remains open at stream end");
   }
-  if (!impl_->failed) {
-    impl_->result.ok = true;
+  if (!failed) {
+    for (const auto& doc : result.docs) {
+      const std::int64_t identity_error = transcriber::FindIdentityError(doc);
+      if (identity_error < 0) {
+        result.identity_error = identity_error;
+        result.docs.clear();
+        Fail("Snowflake identity error");
+        break;
+      }
+    }
   }
-  return std::move(impl_->result);
+  if (!failed) {
+    result.ok = true;
+  }
+  return std::move(result);
 }
 
-ComposeResult Compose(const SerializationStream& serialization,
-                      const ComposeOptions& options) {
+ComposeResult Compose(const SerializationStream& serialization) {
   ComposeResult result;
-  std::map<std::string, transcriber::Node> anchors;
-  for (const SerializationNode& document : serialization.documents) {
-    transcriber::Node representation;
-    if (!ComposeNode(document, anchors, representation,
-                     options.allow_duplicate_keys, result.error)) {
-      return result;
-    }
-    result.docs.push_back(std::move(representation));
-    anchors.clear();
+  if (serialization.identity_error < 0) {
+    result.identity_error = serialization.identity_error;
+    result.error = "Snowflake identity error";
+    return result;
   }
-  result.ok = true;
-  return result;
+
+  ComposeEventBuilder builder;
+  for (const SerializationNode& document : serialization.documents) {
+    SerializationEvent event;
+    event.kind = SerializationEventKind::kDocStart;
+    if (!builder.OnEvent(std::move(event)) || !ReplayNode(document, builder)) {
+      break;
+    }
+    event = SerializationEvent{};
+    event.kind = SerializationEventKind::kDocEnd;
+    if (!builder.OnEvent(std::move(event))) {
+      break;
+    }
+  }
+  return builder.Finish();
 }
 
 }  // namespace bedrock::archive::yaml

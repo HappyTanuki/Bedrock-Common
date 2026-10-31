@@ -75,7 +75,7 @@ TEST(ArchiveReinitialization, SerializerResetStartsANewOperation) {
   first.number = 1;
   first.text = "first";
 
-  bedrock::archive::transcriber::YAMLSerializer serializer(0);
+  bedrock::archive::transcriber::YAMLSerializer serializer;
   ASSERT_TRUE(serializer.Dump(first).Ok());
   const std::string first_output(serializer.Output());
   EXPECT_FALSE(serializer.Dump(first).Ok());
@@ -92,8 +92,7 @@ TEST(ArchiveReinitialization, SerializerResetStartsANewOperation) {
 }
 
 TEST(ArchiveReinitialization, DeserializerInitializeStartsANewOperation) {
-  bedrock::archive::transcriber::YAMLDeserializer deserializer(
-      0, "number: 1\ntext: \"first\"\n");
+  bedrock::archive::transcriber::YAMLDeserializer deserializer("number: 1\ntext: \"first\"\n");
 
   ArchiveData first;
   ASSERT_TRUE(deserializer.Load(first).Ok());
@@ -114,14 +113,14 @@ TEST(ArchiveReinitialization, RsfRestartsAfterExplicitReinitialization) {
   source.number = 3;
   source.text = "rsf";
 
-  bedrock::archive::transcriber::RsfSerializer serializer(0);
+  bedrock::archive::transcriber::RsfSerializer serializer;
   ASSERT_TRUE(serializer.Dump(source).Ok());
   const std::string first_output(serializer.Output());
   EXPECT_TRUE(serializer.Dump(source).Failed());
   serializer.Reset();
   ASSERT_TRUE(serializer.Dump(source).Ok());
 
-  bedrock::archive::transcriber::RsfDeserializer deserializer(0, first_output);
+  bedrock::archive::transcriber::RsfDeserializer deserializer(first_output);
   ArchiveData decoded;
   ASSERT_TRUE(deserializer.Load(decoded).Ok());
   EXPECT_TRUE(deserializer.Load(decoded).Failed());
@@ -136,7 +135,7 @@ void VerifyBinaryRestart() {
   source.number = 7;
   source.text = "binary";
 
-  Serializer serializer(0);
+  Serializer serializer;
   ASSERT_TRUE(serializer.Dump(source).Ok());
   const std::span<const std::byte> output = serializer.Output();
   const std::vector<std::byte> first_output(output.begin(), output.end());
@@ -144,7 +143,7 @@ void VerifyBinaryRestart() {
   serializer.Reset();
   ASSERT_TRUE(serializer.Dump(source).Ok());
 
-  Deserializer deserializer(0, first_output);
+  Deserializer deserializer(first_output);
   ArchiveData decoded;
   ASSERT_TRUE(deserializer.Load(decoded).Ok());
   EXPECT_TRUE(deserializer.Load(decoded).Failed());

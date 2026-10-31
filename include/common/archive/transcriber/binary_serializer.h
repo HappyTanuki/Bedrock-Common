@@ -22,7 +22,7 @@ namespace bedrock::archive::transcriber {
 template <typename Format>
 class BinarySerializer {
  public:
-  explicit BinarySerializer(std::uint16_t machine_id = 0);
+  BinarySerializer();
   ~BinarySerializer();
   BinarySerializer(const BinarySerializer&) = delete;
   BinarySerializer& operator=(const BinarySerializer&) = delete;

@@ -5,7 +5,7 @@
  * 인식: 유효한 스트림은 버퍼 전체가 매치되어야 하고, 무효한 스트림은
  * 도중에 매치가 끊겨야 한다(부분 매치).
  *
- * 이벤트: Parse가 만든 구문 트리를 BuildEvents로 변환하고, 이벤트 열을 압축
+ * 이벤트: Parse가 만든 구문 트리를 CollectEvents로 변환하고, 이벤트 열을 압축
  * 문자열로 렌더링한 뒤 기대 문자열과 비교한다. 표기:
  *  - +doc/-doc, +map/-map, +seq/-seq: 문서/매핑/시퀀스 경계
  *  - =p(텍스트): plain 스칼라(빈 텍스트 = e-node/null)
@@ -47,18 +47,34 @@ struct GrammarTestAccess {
 
 namespace {
 
-using bedrock::archive::yaml::BuildEvents;
 using bedrock::archive::yaml::ChompKind;
 using bedrock::archive::yaml::Cursor;
 using bedrock::archive::yaml::Diag;
 using bedrock::archive::yaml::Event;
 using bedrock::archive::yaml::EventKind;
-using bedrock::archive::yaml::Events;
+
 using bedrock::archive::yaml::EventSink;
 using bedrock::archive::yaml::Grammar;
 using bedrock::archive::yaml::ScalarStyle;
 using bedrock::archive::yaml::SyntaxKind;
 using bedrock::archive::yaml::SyntaxNode;
+
+class CollectingEventSink final : public EventSink {
+ public:
+  bool OnEvent(const Event& event) final {
+    events.push_back(event);
+    return true;
+  }
+
+  std::vector<Event> events;
+};
+
+std::vector<Event> CollectEvents(const std::vector<SyntaxNode>& syntax) {
+  CollectingEventSink sink;
+  bedrock::archive::yaml::EventEmitter emitter(sink);
+  static_cast<void>(emitter.Emit(syntax));
+  return sink.events;
+}
 
 /** @brief 버퍼 시작에 놓인 Cursor를 만든다(진단은 선택). */
 Cursor MakeCursor(const std::vector<std::uint32_t>& buf, Diag* diag = nullptr) {
@@ -362,9 +378,8 @@ TEST(YamlSyntax, ParseBuildsStructureAndVisitorBuildsEvents) {
   ASSERT_EQ(mapping.children[1].children.size(), 1U);
   EXPECT_EQ(mapping.children[1].children[0].kind, SyntaxKind::kScalar);
 
-  const Events events = BuildEvents(parsed.syntax);
-  EXPECT_EQ(Render(buf, events.list),
-            "+doc +map =p(a) +seq =p(1) -seq -map -doc");
+  const std::vector<Event> events = CollectEvents(parsed.syntax);
+  EXPECT_EQ(Render(buf, events), "+doc +map =p(a) +seq =p(1) -seq -map -doc");
 }
 
 TEST(YamlEventBuilder, VisitsSyntheticSyntaxWithoutGrammar) {
@@ -409,37 +424,28 @@ TEST(YamlEventBuilder, VisitsSyntheticSyntaxWithoutGrammar) {
   document.end = 20;
   document.children = {tag, anchor, mapping};
 
-  const Events events = BuildEvents(std::vector<SyntaxNode>{document});
+  const std::vector<Event> events =
+      CollectEvents(std::vector<SyntaxNode>{document});
   const std::vector<EventKind> expected{
       EventKind::kDocStart, EventKind::kTag,    EventKind::kAnchor,
       EventKind::kMapStart, EventKind::kScalar, EventKind::kSeqStart,
       EventKind::kAlias,    EventKind::kSeqEnd, EventKind::kMapEnd,
       EventKind::kDocEnd,
   };
-  ASSERT_EQ(events.list.size(), expected.size());
+  ASSERT_EQ(events.size(), expected.size());
   for (std::size_t index = 0; index < expected.size(); ++index) {
-    EXPECT_EQ(events.list[index].kind, expected[index]) << index;
+    EXPECT_EQ(events[index].kind, expected[index]) << index;
   }
-  EXPECT_EQ(events.list[1].begin, 1U);
-  EXPECT_EQ(events.list[1].end, 3U);
-  EXPECT_EQ(events.list[2].begin, 4U);
-  EXPECT_EQ(events.list[2].end, 5U);
-  EXPECT_EQ(events.list[4].style, ScalarStyle::kLiteral);
-  EXPECT_EQ(events.list[4].chomp, ChompKind::kKeep);
-  EXPECT_EQ(events.list[4].indent, 2);
-  EXPECT_EQ(events.list[4].begin, 7U);
-  EXPECT_EQ(events.list[4].end, 8U);
+  EXPECT_EQ(events[1].begin, 1U);
+  EXPECT_EQ(events[1].end, 3U);
+  EXPECT_EQ(events[2].begin, 4U);
+  EXPECT_EQ(events[2].end, 5U);
+  EXPECT_EQ(events[4].style, ScalarStyle::kLiteral);
+  EXPECT_EQ(events[4].chomp, ChompKind::kKeep);
+  EXPECT_EQ(events[4].indent, 2);
+  EXPECT_EQ(events[4].begin, 7U);
+  EXPECT_EQ(events[4].end, 8U);
 }
-
-class CollectingEventSink final : public EventSink {
- public:
-  bool OnEvent(const Event& event) final {
-    events.push_back(event);
-    return true;
-  }
-
-  std::vector<Event> events;
-};
 
 TEST(YamlEventBuilder, EmitsToStreamingSinkWithoutMaterializedEvents) {
   SyntaxNode scalar;
@@ -454,23 +460,23 @@ TEST(YamlEventBuilder, EmitsToStreamingSinkWithoutMaterializedEvents) {
   document.children.push_back(scalar);
 
   CollectingEventSink sink;
-  ASSERT_TRUE(bedrock::archive::yaml::EmitEvents(
-      std::vector<SyntaxNode>{document}, sink));
+  bedrock::archive::yaml::EventEmitter emitter(sink);
+  ASSERT_TRUE(emitter.Emit(std::vector<SyntaxNode>{document}));
   ASSERT_EQ(sink.events.size(), 3U);
   EXPECT_EQ(sink.events[0].kind, EventKind::kDocStart);
   EXPECT_EQ(sink.events[1].kind, EventKind::kScalar);
   EXPECT_EQ(sink.events[2].kind, EventKind::kDocEnd);
 }
 
-TEST(YamlEvents, EmitsExpectedSequences) {
+TEST(YamlEventSequences, EmitsExpectedSequences) {
   for (const EventCase& cursor : kEventCases) {
     SCOPED_TRACE(cursor.name);
     std::vector<std::uint32_t> buf(cursor.yaml.begin(), cursor.yaml.end());
     Diag diag;
     const auto parsed = ParseSyntaxForTest(buf, &diag);
     ASSERT_EQ(parsed.cursor.before.size(), buf.size()) << "전체 매치 실패";
-    const Events events = BuildEvents(parsed.syntax);
-    EXPECT_EQ(Render(buf, events.list), cursor.events);
+    const std::vector<Event> events = CollectEvents(parsed.syntax);
+    EXPECT_EQ(Render(buf, events), cursor.events);
   }
 }
 

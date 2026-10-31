@@ -1,25 +1,30 @@
 file(GLOB EXTERNAL_TEST_SOURCES CONFIGURE_DEPENDS "src/*.cc")
 
-add_executable(common_external_tests ${EXTERNAL_TEST_SOURCES})
+add_executable(common_external_tests ${EXTERNAL_TEST_SOURCES}
+    "${CMAKE_CURRENT_SOURCE_DIR}/../test_main.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../snowflake_child.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../snowflake_process_helper.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../scoped_snowflake_config.cc")
 target_include_directories(common_external_tests PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(common_external_tests PRIVATE
-    ${SUB_PROJECT_NAME}
-    GTest::gtest_main)
-
-if(NOT WIN32)
-    target_compile_options(common_external_tests PRIVATE
-        -fno-exceptions -fno-rtti
-        -Wno-global-constructors
-        -Wno-exit-time-destructors
-        -Wno-weak-vtables
-        -Wno-used-but-marked-unused
-        -Wno-covered-switch-default
-        -Wno-disabled-macro-expansion
-        -Wno-zero-as-null-pointer-constant)
+    Common
+    GTest::gtest
+    _BedrockBuildConfig::Utf8)
+# Common's cxx_std_23 requirement sets only the minimum standard; set the
+# project language properties so GCC/Clang compile ISO C++23, not gnu++23.
+_BedrockBuildConfig_set_language_properties(common_external_tests)
+if(WIN32)
+    # Helper children parse their native wide command line (CommandLineToArgvW).
+    target_link_libraries(common_external_tests PRIVATE shell32)
 endif()
 
-if(BUILD_SHARED_LIBS)
+if(NOT WIN32)
+    target_link_libraries(common_external_tests PRIVATE _BedrockBuildConfig::NoExceptions _BedrockBuildConfig::NoRtti _BedrockBuildConfig::TestWarnings)
+endif()
+
+if(WIN32 AND BUILD_SHARED_LIBS)
     add_custom_command(
         TARGET common_external_tests
         POST_BUILD

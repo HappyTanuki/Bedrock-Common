@@ -15,7 +15,7 @@ constexpr std::string_view kEncTable =
 
 /**
  * @brief base64 문자를 6bit 값으로 변환한다.
- * @param c base64 문자.
+ * @param character base64 문자.
  * @return 6bit 값(0~63), 유효하지 않으면 -1.
  */
 int DecodeChar(unsigned char character) {
@@ -39,7 +39,7 @@ int DecodeChar(unsigned char character) {
 
 /**
  * @brief base64 디코딩 시 무시할 공백류 문자인지 확인한다.
- * @param c 검사할 문자.
+ * @param character 검사할 문자.
  * @return 공백/개행/탭 등이면 true.
  */
 bool IsSkippable(unsigned char character) {
@@ -96,7 +96,8 @@ bool Base64Decode(std::string_view text, std::vector<std::uint8_t>& out) {
   std::size_t ndata = 0;  // 패딩을 제외한 유효 데이터 문자 수
   bool padded = false;
 
-  for (unsigned char character : text) {
+  for (char raw_character : text) {
+    const auto character = static_cast<unsigned char>(raw_character);
     if (IsSkippable(character)) {
       continue;
     }
