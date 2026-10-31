@@ -35,6 +35,19 @@ if(WIN32)
     target_link_libraries(Common PRIVATE shell32 ole32)
 endif()
 target_link_libraries(Common PUBLIC _BedrockBuildConfig::Cxx23 _BedrockBuildConfig::NativeIsa PRIVATE _BedrockBuildConfig::Warnings _BedrockBuildConfig::WarningsAsErrors _BedrockBuildConfig::Utf8 _BedrockBuildConfig::MsvcConformance _BedrockBuildConfig::MsvcParallel _BedrockBuildConfig::NoExceptions _BedrockBuildConfig::NoRtti)
+# Linux STATIC runtime linkage (the pre-migration CommonLinkOptions carrier).
+# PUBLIC so every executable or shared object linking the static archive
+# (common_external_tests, Encryption, Networking) inherits it; the archive step
+# itself ignores link options. validate_linkage above already rejects glibc.
+if(_common_library_type STREQUAL "STATIC" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(COMMON_LIBC STREQUAL "musl")
+        target_link_libraries(Common PUBLIC _BedrockBuildConfig::StaticMuslRuntime)
+        message(STATUS "Common linkage: STATIC (musl, full-static)")
+    else()
+        target_link_libraries(Common PUBLIC _BedrockBuildConfig::StaticCxxRuntime)
+        message(STATUS "Common linkage: STATIC (libc=${COMMON_LIBC}, runtime static)")
+    endif()
+endif()
 _BedrockBuildConfig_enable_pch(Common HEADER "${COMMON_INTERNAL_INCLUDE_DIR}/pch.h")
 _BedrockBuildConfig_set_language_properties(Common)
 _BedrockBuildConfig_set_msvc_debug_information(Common)
