@@ -31,7 +31,7 @@ if(NOT TARGET Bedrock)
 
     FetchContent_Declare(_BedrockBuildConfig
         GIT_REPOSITORY https://github.com/HappyTanuki/Bedrock.git
-        GIT_TAG ea9cac1c1a17734bdcd408996373a54cde94e212
+        GIT_TAG aa2a896c2b6fadcad56bb1383c49b6b78b8cb1e1
         GIT_SUBMODULES ""
         GIT_SUBMODULES_RECURSE FALSE
         SOURCE_SUBDIR cmake/_BedrockBuildConfig)

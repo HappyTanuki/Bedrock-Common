@@ -25,6 +25,10 @@ else()
     add_library(Common STATIC ${SOURCES})
 endif()
 add_library(${ROOT_PROJECT_NAME}::Common ALIAS Common)
+# Debug artifacts are named Commond (Commond.dll/.lib, libCommond.so/.a) so a
+# Debug and a Release install can share one prefix. Release, RelWithDebInfo and
+# MinSizeRel keep the plain name; the last of them installed wins.
+set_target_properties(Common PROPERTIES DEBUG_POSTFIX d)
 _BedrockBuildConfig_stage_public_headers(SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/public-include" FILES common.h TREES common OUT_VAR COMMON_EXTERNAL_INCLUDE_DIR)
 set(COMMON_INTERNAL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(Common PUBLIC "$<BUILD_INTERFACE:${COMMON_EXTERNAL_INCLUDE_DIR}>" "$<INSTALL_INTERFACE:include>" PRIVATE "${COMMON_INTERNAL_INCLUDE_DIR}")

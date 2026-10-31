@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "exclude": [
+    {
+      "file": "windows.json",
+      "reason": "Common owns its Windows presets: Ninja Multi-Config with one configure preset per architecture, linkage and CRT, plus Debug/Release/RelWithDebInfo/MinSizeRel build and test presets. This is a Common-only decision; the canonical single-config windows.json would revert it."
+    }
+  ]
+}
